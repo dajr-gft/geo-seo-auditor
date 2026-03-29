@@ -1,0 +1,81 @@
+{
+  "url": "https://example.com",
+  "domain": "example.com",
+  "brand_name": "Example Corp",
+  "date": "2026-03-29",
+  "audit_duration_seconds": 4.2,
+  "geo_score": 47,
+  "scores": {
+    "ai_citability": {
+      "value": 38,
+      "weight": 25,
+      "label": "AI Citability"
+    },
+    "brand_authority": {
+      "value": 52,
+      "weight": 20,
+      "label": "Brand Authority"
+    },
+    "content_eeat": {
+      "value": 45,
+      "weight": 20,
+      "label": "Content E-E-A-T"
+    },
+    "technical": {
+      "value": 65,
+      "weight": 15,
+      "label": "Technical SEO"
+    },
+    "schema": {
+      "value": 22,
+      "weight": 10,
+      "label": "Schema Markup"
+    },
+    "platform_optimization": {
+      "value": 40,
+      "weight": 10,
+      "label": "Platform Optimization"
+    }
+  },
+  "platforms": {
+    "Google AI Overviews": 52,
+    "ChatGPT Search": 41,
+    "Perplexity AI": 45,
+    "Google Gemini": 38,
+    "Bing Copilot": 55
+  },
+  "findings": [
+    {
+      "severity": "critical",
+      "title": "Schema insuficiente",
+      "description": "Apenas Organization e WebSite.",
+      "fix": "Implementar schemas completos",
+      "effort": "2 dias",
+      "impact_pts": 6
+    },
+    {
+      "severity": "high",
+      "title": "2 crawlers criticos bloqueados",
+      "description": "ClaudeBot e PerplexityBot bloqueados.",
+      "fix": "Whitelist",
+      "effort": "1 hora",
+      "impact_pts": 4
+    }
+  ],
+  "quick_wins": [
+    {
+      "action": "Whitelist ClaudeBot e PerplexityBot",
+      "pts": 4,
+      "effort": "1h",
+      "roi": 4.0,
+      "severity": "high"
+    },
+    {
+      "action": "Criar llms.txt",
+      "pts": 3,
+      "effort": "30min",
+      "roi": 6.0,
+      "severity": "medium"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# GEO-SEO Auditor — Python dependencies
+
+# Server
+fastapi>=0.115.0
+uvicorn>=0.32.0
+
+# HTTP requests
+requests>=2.31.0
+
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
