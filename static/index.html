@@ -298,6 +298,10 @@ function App(){
   const[selectedSev,setSelectedSev]=useState(null);
   const[selectedCrawlerFilter,setSelectedCrawlerFilter]=useState(null);
   const[selectedQuickWin,setSelectedQuickWin]=useState(null);
+  // ── SEO tab interactive state ──
+  const[schemaChecked,setSchemaChecked]=useState(new Set());
+  const[copiedFoco,setCopiedFoco]=useState(null);
+  const toggleSchema=useCallback(type=>setSchemaChecked(prev=>{const n=new Set(prev);n.has(type)?n.delete(type):n.add(type);return n;}),[]);
 
   // ── Chat (IA tab) ──
   const INITIAL_MSG={role:'assistant',text:'Olá! Sou a **Letícia**, sua analista GEO-SEO sênior.\n\nPosso responder perguntas sobre **scores**, **citabilidade**, **findings**, **quick wins**, **crawlers** e muito mais — tudo baseado nos dados reais de auditoria.\n\nO que você gostaria de analisar?',ts:Date.now()};
@@ -474,6 +478,40 @@ function App(){
       .sort((a,b)=>(b.impact_pts||0)-(a.impact_pts||0))
       .slice(0,8)
   ,[sourceData.findings]);
+
+  const focoDia=useMemo(()=>{
+    const topWin=[...sourceData.quick_wins].sort((a,b)=>(b.pts/(EFF_H[b.effort]||8))-(a.pts/(EFF_H[a.effort]||8)))[0]||null;
+    const topFinding=sourceData.findings.filter(f=>f.sev==='critical'||f.sev==='high').sort((a,b)=>(b.impact_pts||0)-(a.impact_pts||0))[0]||null;
+    const bad=sourceData.citability_blocks.filter(b=>b.grade==='D'||b.grade==='F');
+    const rewriteBlock=bad.sort((a,b)=>Math.abs((a.words||0)-150)-Math.abs((b.words||0)-150))[0]||null;
+    return{topWin,topFinding,rewriteBlock};
+  },[sourceData]);
+
+  const contentStats=useMemo(()=>({
+    curtos:sourceData.citability_blocks.filter(b=>(b.words||0)<100).length,
+    ideal:sourceData.citability_blocks.filter(b=>(b.words||0)>=134&&(b.words||0)<=167).length,
+    longos:sourceData.citability_blocks.filter(b=>(b.words||0)>200).length,
+    df:sourceData.citability_blocks.filter(b=>b.grade==='D'||b.grade==='F').length,
+    total:sourceData.citability_blocks.length,
+  }),[sourceData.citability_blocks]);
+
+  const schemaWins=useMemo(()=>sourceData.quick_wins.filter(w=>w.category==='schema'),[sourceData.quick_wins]);
+
+  // Auto-initialize schema checklist from audit-detected types
+  useEffect(()=>{
+    const found=sourceData.schema_detail?.types_found;
+    if(found&&found.length>0)setSchemaChecked(new Set(found));
+  },[sourceData.schema_detail?.types_found?.join?.(',')??'']);
+  const SCHEMA_LIST=[
+    {type:'Organization',prio:'high',desc:'Identidade da marca — consultado por todos os LLMs'},
+    {type:'WebSite',prio:'high',desc:'Sitelinks e SearchAction para busca interna'},
+    {type:'FAQPage',prio:'high',desc:'Respostas Q&A — citabilidade direta para IA'},
+    {type:'Product',prio:'high',desc:'AI Shopping e catálogo de produtos'},
+    {type:'BreadcrumbList',prio:'medium',desc:'Estrutura hierárquica do site'},
+    {type:'Article',prio:'medium',desc:'Conteúdo editorial com E-E-A-T de autores'},
+    {type:'SoftwareApplication',prio:'medium',desc:'Plataformas SaaS — AI App stores'},
+    {type:'Person',prio:'low',desc:'Especialistas e autores para E-E-A-T'},
+  ];
 
   if(!hasRealData){
     return React.createElement('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px',background:C.bg}},
@@ -1058,34 +1096,86 @@ function App(){
       /* ── SEO TAB ── */
       tab==="seo"&&React.createElement('div',{className:'fade-up'},
 
-        /* ── Row 1: Score Gap Priority ── */
+        /* ── FOCO DE HOJE ── */
+        React.createElement('div',{style:{marginBottom:16}},
+          React.createElement('div',{style:{fontSize:10,color:C.text3,textTransform:'uppercase',letterSpacing:2.5,fontWeight:600,marginBottom:10}},'⚡ Foco de hoje — ações específicas baseadas na auditoria'),
+          React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:10}},
+
+            focoDia.topWin&&React.createElement('div',{style:{background:`linear-gradient(135deg,${C.accent}18,${C.card})`,border:`1px solid ${C.accent}35`,borderRadius:12,padding:'14px 16px'}},
+              React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.accent,fontWeight:700,marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                '⚡ Maior ROI agora',
+                React.createElement('span',{style:{background:(CAT_C[focoDia.topWin.category]||C.text3)+'22',color:CAT_C[focoDia.topWin.category]||C.text3,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:700,textTransform:'uppercase'}},focoDia.topWin.category)
+              ),
+              React.createElement('div',{style:{fontSize:13,fontWeight:600,lineHeight:1.45,marginBottom:10,color:C.text1}},focoDia.topWin.action),
+              React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}},
+                React.createElement('span',{style:{fontSize:12,fontWeight:700,color:C.green,background:C.greenBg,padding:'2px 8px',borderRadius:6}},'+'+focoDia.topWin.pts+' pts'),
+                React.createElement('span',{style:{fontSize:11,color:C.text3}},'⏱ '+focoDia.topWin.effort),
+                React.createElement('span',{style:{fontSize:11,color:C.amber}},'ROI: '+(Math.round(focoDia.topWin.pts/(EFF_H[focoDia.topWin.effort]||8)*10)/10)+'×')
+              ),
+              React.createElement('button',{onClick:()=>{navigator.clipboard?.writeText(focoDia.topWin.action);setCopiedFoco('win');setTimeout(()=>setCopiedFoco(null),2000);},style:{background:'none',border:`1px solid ${C.accent}35`,color:copiedFoco==='win'?C.green:C.accent,fontSize:10,padding:'5px 10px',borderRadius:7,cursor:'pointer',width:'100%',transition:'all .2s'}},copiedFoco==='win'?'✓ Copiado':'⎘ Copiar ação')
+            ),
+
+            focoDia.topFinding&&React.createElement('div',{style:{background:`linear-gradient(135deg,${C.redBg},${C.card})`,border:`1px solid ${C.red}30`,borderRadius:12,padding:'14px 16px'}},
+              React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.red,fontWeight:700,marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                '🚨 Urgente — corrigir',
+                React.createElement('span',{style:{background:C.redBg,color:C.red,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:700}},(focoDia.topFinding.sev||'').toUpperCase())
+              ),
+              React.createElement('div',{style:{fontSize:13,fontWeight:600,lineHeight:1.45,marginBottom:6,color:C.text1}},focoDia.topFinding.title||focoDia.topFinding.desc?.slice(0,60)),
+              React.createElement('div',{style:{fontSize:11,color:C.text3,lineHeight:1.5,marginBottom:8}},focoDia.topFinding.fix?.slice(0,130)||focoDia.topFinding.desc?.slice(0,130)),
+              React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:10}},
+                React.createElement('span',{style:{fontSize:12,fontWeight:700,color:C.red,background:C.redBg,padding:'2px 8px',borderRadius:6}},'+'+(focoDia.topFinding.impact_pts||0)+' pts'),
+                React.createElement('span',{style:{fontSize:11,color:C.text3}},'⏱ '+focoDia.topFinding.effort)
+              ),
+              React.createElement('button',{onClick:()=>{navigator.clipboard?.writeText(focoDia.topFinding.fix||focoDia.topFinding.desc||'');setCopiedFoco('fix');setTimeout(()=>setCopiedFoco(null),2000);},style:{background:'none',border:`1px solid ${C.red}30`,color:copiedFoco==='fix'?C.green:C.red,fontSize:10,padding:'5px 10px',borderRadius:7,cursor:'pointer',width:'100%',transition:'all .2s'}},copiedFoco==='fix'?'✓ Copiado':'⎘ Copiar correção')
+            ),
+
+            focoDia.rewriteBlock&&React.createElement('div',{style:{background:`linear-gradient(135deg,${C.blueBg},${C.card})`,border:`1px solid ${C.blue}30`,borderRadius:12,padding:'14px 16px'}},
+              React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.blue,fontWeight:700,marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                '✏️ Reescrever agora',
+                React.createElement('span',{style:{background:(GRADE_C[focoDia.rewriteBlock.grade]||C.text3)+'22',color:GRADE_C[focoDia.rewriteBlock.grade]||C.text3,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:700}},'Grade '+focoDia.rewriteBlock.grade)
+              ),
+              React.createElement('div',{style:{fontSize:13,fontWeight:600,lineHeight:1.45,marginBottom:6,color:C.text1}},focoDia.rewriteBlock.heading?.slice(0,70)||(focoDia.rewriteBlock.heading||'Bloco sem título')),
+              React.createElement('div',{style:{fontSize:11,color:C.text3,lineHeight:1.55,marginBottom:10}},
+                (focoDia.rewriteBlock.words||0)+' palavras · meta: 134–167 · score: '+(focoDia.rewriteBlock.score||0)+'/100',
+                React.createElement('br'),
+                (focoDia.rewriteBlock.words||0)<100?'Muito curto — adicionar dados, exemplos e estatísticas':(focoDia.rewriteBlock.words||0)>200?'Muito longo — dividir em blocos focados em uma única resposta':'Reformular como resposta direta: resposta primeiro, contexto depois'
+              ),
+              React.createElement('button',{onClick:()=>{navigator.clipboard?.writeText(focoDia.rewriteBlock.heading||'');setCopiedFoco('block');setTimeout(()=>setCopiedFoco(null),2000);},style:{background:'none',border:`1px solid ${C.blue}30`,color:copiedFoco==='block'?C.green:C.blue,fontSize:10,padding:'5px 10px',borderRadius:7,cursor:'pointer',width:'100%',transition:'all .2s'}},copiedFoco==='block'?'✓ Copiado':'⎘ Copiar heading')
+            )
+          )
+        ),
+
+        /* ── Score Gap Priority ── */
         React.createElement('div',{style:{...cs,marginBottom:16}},
           sl("Prioridade de otimização — gap × peso"),
-          React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Categorias ordenadas pelo impacto ponderado no GEO Score (gap até 80 × peso da categoria)'),
-          React.createElement(ResponsiveContainer,{width:'100%',height:isMobile?280:220},
-            React.createElement(BarChart,{data:seoGapData,layout:'vertical',margin:{top:0,right:isMobile?8:60,left:isMobile?90:130,bottom:0}},
+          React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Categorias ordenadas pelo impacto ponderado (gap até score 80 × peso da categoria). Score do competidor: ',React.createElement('span',{style:{color:C.red,fontWeight:600}},sourceData.top_competitor.score),'/100.'),
+          React.createElement(ResponsiveContainer,{width:'100%',height:isMobile?300:230},
+            React.createElement(BarChart,{data:seoGapData,layout:'vertical',margin:{top:0,right:isMobile?8:80,left:isMobile?90:130,bottom:0}},
               React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border,horizontal:false}),
               React.createElement(XAxis,{type:'number',domain:[0,100],tick:{fill:C.text3,fontSize:10},axisLine:{stroke:C.border}}),
               React.createElement(YAxis,{type:'category',dataKey:'label',tick:{fill:C.text2,fontSize:isMobile?10:11},width:isMobile?88:128}),
               React.createElement(Tooltip,{content:({active,payload})=>{
                 if(!active||!payload?.length)return null;
                 const d=payload[0].payload;
+                const compS=sourceData.top_competitor.score;
                 return React.createElement('div',{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 14px',fontSize:12}},
                   React.createElement('div',{style:{fontWeight:700,marginBottom:6}},d.label,' (',d.weight,'%)'),
                   React.createElement('div',{style:{color:tier(d.value).c}},'Score atual: ',d.value,'/100'),
-                  React.createElement('div',{style:{color:C.text3}},'Gap até 80: ',d.gap,' pts'),
-                  React.createElement('div',{style:{color:C.amber}},'Prioridade: ',d.priority,' pts ponderados')
+                  React.createElement('div',{style:{color:C.text3}},'Gap até meta (80): ',d.gap,' pts'),
+                  React.createElement('div',{style:{color:C.amber}},'Prioridade ponderada: ',d.priority,' pts'),
+                  compS&&React.createElement('div',{style:{color:C.red,marginTop:4}},'Competidor: ',sourceData.top_competitor.name,' ',compS,'/100')
                 );
               }}),
-              React.createElement(Bar,{dataKey:'value',radius:[0,6,6,0],maxBarSize:28},
+              React.createElement(Bar,{dataKey:'value',radius:[0,4,4,0],maxBarSize:24,name:'Score atual'},
                 seoGapData.map((d,i)=>React.createElement(Cell,{key:i,fill:tier(d.value).c}))
               ),
-              React.createElement(ReferenceLine,{x:80,stroke:C.green,strokeDasharray:'6 4',strokeWidth:1.5,label:{value:'Meta 80',fill:C.green,fontSize:10,position:'insideTopRight'}})
+              React.createElement(ReferenceLine,{x:80,stroke:C.green,strokeDasharray:'6 4',strokeWidth:1.5,label:{value:'Meta 80',fill:C.green,fontSize:10,position:'insideTopRight'}}),
+              React.createElement(ReferenceLine,{x:sourceData.top_competitor.score,stroke:C.red,strokeDasharray:'4 4',strokeWidth:1.5,label:{value:sourceData.top_competitor.name,fill:C.red,fontSize:10,position:'insideBottomRight'}})
             )
           ),
           React.createElement('div',{style:{display:'grid',gridTemplateColumns:`repeat(${isMobile?2:3},1fr)`,gap:8,marginTop:14}},
             seoGapData.slice(0,isMobile?4:6).map((d,i)=>React.createElement('div',{key:i,style:{background:C.surface,borderRadius:8,padding:'10px 12px',border:`1px solid ${tier(d.value).c}20`,borderLeft:`3px solid ${tier(d.value).c}`}},
-              React.createElement('div',{style:{fontSize:10,color:C.text3,marginBottom:3}},d.label),
+              React.createElement('div',{style:{fontSize:10,color:C.text3,marginBottom:3}},d.label,' (',d.weight,'%)'),
               React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                 React.createElement('span',{style:{fontSize:18,fontWeight:800,color:tier(d.value).c,fontFamily:'monospace'}},d.value),
                 d.gap>0&&React.createElement('span',{style:{fontSize:10,color:C.amber,background:C.amberBg,padding:'2px 6px',borderRadius:5,fontWeight:600}},'-'+d.gap)
@@ -1094,31 +1184,36 @@ function App(){
           )
         ),
 
-        React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:16}},
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'3fr 2fr',gap:16,marginBottom:16}},
 
-          /* ── Content Scatter ── */
+          /* ── Content Scatter (with summary strip) ── */
           React.createElement('div',{style:{...cs,margin:0}},
             sl("Blocos de conteúdo — palavras × score"),
-            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Zona ideal: 134–167 palavras e score ≥ 65 (grade B). Pontos fora desta zona são oportunidades.'),
-            React.createElement(ResponsiveContainer,{width:'100%',height:240},
-              React.createElement(ScatterChart,{margin:{top:8,right:8,bottom:20,left:0}},
+            React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}},
+              React.createElement('span',{style:{fontSize:11,background:C.redBg,color:C.red,padding:'3px 10px',borderRadius:20,fontWeight:600}},contentStats.curtos+' curtos <100 pal.'),
+              React.createElement('span',{style:{fontSize:11,background:C.greenBg,color:C.green,padding:'3px 10px',borderRadius:20,fontWeight:600}},contentStats.ideal+' ideais 134–167'),
+              React.createElement('span',{style:{fontSize:11,background:C.amberBg,color:C.amber,padding:'3px 10px',borderRadius:20,fontWeight:600}},contentStats.longos+' longos >200'),
+              React.createElement('span',{style:{fontSize:11,background:C.redBg,color:C.red,padding:'3px 10px',borderRadius:20,fontWeight:600}},contentStats.df+' grade D/F')
+            ),
+            React.createElement(ResponsiveContainer,{width:'100%',height:220},
+              React.createElement(ScatterChart,{margin:{top:4,right:8,bottom:20,left:0}},
                 React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border}),
                 React.createElement(XAxis,{type:'number',dataKey:'x',name:'Palavras',domain:[0,350],tick:{fill:C.text3,fontSize:10},label:{value:'Palavras',position:'insideBottom',offset:-10,fill:C.text3,fontSize:10}}),
                 React.createElement(YAxis,{type:'number',dataKey:'y',name:'Score',domain:[0,100],tick:{fill:C.text3,fontSize:10}}),
-                React.createElement(ZAxis,{range:[40,80]}),
+                React.createElement(ZAxis,{range:[36,64]}),
                 React.createElement(Tooltip,{cursor:{stroke:C.border},content:({active,payload})=>{
                   if(!active||!payload?.length)return null;
                   const d=payload[0].payload;
-                  return React.createElement('div',{style:{background:C.card,border:`1px solid ${GRADE_C[d.grade]||C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,maxWidth:200}},
-                    React.createElement('div',{style:{fontWeight:600,marginBottom:4,fontSize:11,color:GRADE_C[d.grade]}},d.name?.slice(0,40)),
-                    React.createElement('div',null,'Score: ',React.createElement('b',{style:{color:GRADE_C[d.grade]}},d.score),' | Grade: ',d.grade),
-                    React.createElement('div',{style:{color:C.text3}},d.words,' palavras',d.words>=134&&d.words<=167?' ✓ ideal':'')
+                  return React.createElement('div',{style:{background:C.card,border:`1px solid ${GRADE_C[d.grade]||C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,maxWidth:220}},
+                    React.createElement('div',{style:{fontWeight:600,marginBottom:4,fontSize:11,color:GRADE_C[d.grade]}},d.name?.slice(0,50)||'—'),
+                    React.createElement('div',null,'Score: ',React.createElement('b',{style:{color:GRADE_C[d.grade]}},d.score),' · Grade ',d.grade),
+                    React.createElement('div',{style:{color:C.text3}},d.words,' palavras ',(d.words>=134&&d.words<=167?'✓ faixa ideal':d.words<134?'↑ curto demais':'↓ longo demais'))
                   );
                 }}),
-                React.createElement(ReferenceArea,{x1:134,x2:167,y1:65,y2:100,fill:C.green,fillOpacity:0.06,stroke:C.green,strokeOpacity:.3,strokeDasharray:'4 4'}),
-                React.createElement(ReferenceLine,{x:134,stroke:C.green,strokeOpacity:.4,strokeDasharray:'3 3'}),
-                React.createElement(ReferenceLine,{x:167,stroke:C.green,strokeOpacity:.4,strokeDasharray:'3 3'}),
-                React.createElement(ReferenceLine,{y:65,stroke:C.blue,strokeOpacity:.4,strokeDasharray:'3 3'}),
+                React.createElement(ReferenceArea,{x1:134,x2:167,y1:65,y2:100,fill:C.green,fillOpacity:.07,stroke:C.green,strokeOpacity:.25,strokeDasharray:'4 4'}),
+                React.createElement(ReferenceLine,{x:134,stroke:C.green,strokeOpacity:.35,strokeDasharray:'3 3'}),
+                React.createElement(ReferenceLine,{x:167,stroke:C.green,strokeOpacity:.35,strokeDasharray:'3 3'}),
+                React.createElement(ReferenceLine,{y:65,stroke:C.blue,strokeOpacity:.35,strokeDasharray:'3 3'}),
                 React.createElement(Scatter,{data:scatterBlocks,isAnimationActive:true},
                   scatterBlocks.map((d,i)=>React.createElement(Cell,{key:i,fill:d.fill,fillOpacity:.85}))
                 )
@@ -1126,76 +1221,164 @@ function App(){
             ),
             React.createElement('div',{style:{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}},
               Object.entries(GRADE_C).map(([g,col])=>React.createElement('div',{key:g,style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}},
-                React.createElement('span',{style:{width:10,height:10,borderRadius:'50%',background:col,display:'inline-block'}}),
-                'Grade ',g
+                React.createElement('span',{style:{width:9,height:9,borderRadius:'50%',background:col,display:'inline-block'}}),g
               )),
               React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.green}},
-                React.createElement('span',{style:{width:10,height:10,borderRadius:2,background:C.green,opacity:.3,display:'inline-block'}}),
-                'Zona ideal'
+                React.createElement('span',{style:{width:9,height:9,borderRadius:2,background:C.green,opacity:.3,display:'inline-block'}}),'Zona ideal'
               )
             )
           ),
 
-          /* ── Action Quadrant ── */
-          React.createElement('div',{style:{...cs,margin:0}},
-            sl("Matriz esforço × impacto — quick wins"),
-            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Superior esquerdo = máxima prioridade. Clique para ver detalhes.'),
-            React.createElement(ResponsiveContainer,{width:'100%',height:240},
-              React.createElement(ScatterChart,{margin:{top:8,right:8,bottom:20,left:0}},
-                React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border}),
-                React.createElement(XAxis,{type:'number',dataKey:'x',name:'Esforço (h)',domain:[0,42],tick:{fill:C.text3,fontSize:10},ticks:[0.5,1,2,8,24,40],tickFormatter:v=>v<=1?v+'h':v<=8?v+'h':v+'h',label:{value:'Esforço →',position:'insideBottom',offset:-10,fill:C.text3,fontSize:10}}),
-                React.createElement(YAxis,{type:'number',dataKey:'y',name:'Impacto (pts)',domain:[0,20],tick:{fill:C.text3,fontSize:10},label:{value:'↑ Impacto',angle:-90,position:'insideLeft',fill:C.text3,fontSize:10}}),
-                React.createElement(ZAxis,{range:[50,100]}),
-                React.createElement(Tooltip,{cursor:{stroke:C.border},content:({active,payload})=>{
-                  if(!active||!payload?.length)return null;
-                  const d=payload[0].payload;
-                  return React.createElement('div',{style:{background:C.card,border:`1px solid ${d.fill}`,borderRadius:8,padding:'8px 12px',fontSize:12,maxWidth:220}},
-                    React.createElement('div',{style:{fontWeight:600,marginBottom:4,fontSize:11}},d.action?.slice(0,50)),
-                    React.createElement('div',{style:{color:d.fill}},d.category),
-                    React.createElement('div',null,'+',d.y,' pts · ',d.effort,' · ROI ',d.roi,'×')
-                  );
-                }}),
-                React.createElement(ReferenceArea,{x1:0,x2:8,y1:8,y2:20,fill:C.green,fillOpacity:0.06}),
-                React.createElement(ReferenceLine,{x:8,stroke:C.border,strokeDasharray:'4 4'}),
-                React.createElement(ReferenceLine,{y:8,stroke:C.border,strokeDasharray:'4 4'}),
-                React.createElement(Scatter,{data:actionMatrix,isAnimationActive:true},
-                  actionMatrix.map((d,i)=>React.createElement(Cell,{key:i,fill:d.fill}))
-                )
-              )
+          /* ── Schema Markup Checklist ── */
+          React.createElement('div',{style:{...cs,margin:0,display:'flex',flexDirection:'column'}},
+            sl("Schema markup — checklist de implementação"),
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+              React.createElement('div',{style:{fontSize:11,color:C.text3}},'Score: ',React.createElement('span',{style:{color:tier(scores.schema?.value||0).c,fontWeight:700}},scores.schema?.value||0,'/100'),
+                sourceData.schema_detail?.coverage_pct!=null&&React.createElement('span',{style:{color:C.text3,marginLeft:6}},'· cobertura: '+Math.round(sourceData.schema_detail.coverage_pct)+'%')
+              ),
+              React.createElement('span',{style:{fontSize:10,color:C.green}},schemaChecked.size+' detectados · '+(SCHEMA_LIST.length-schemaChecked.size)+' pendentes')
             ),
-            React.createElement('div',{style:{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}},
-              Object.entries(CAT_C).map(([cat,col])=>React.createElement('div',{key:cat,style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}},
-                React.createElement('span',{style:{width:10,height:10,borderRadius:'50%',background:col,display:'inline-block'}}),
-                cat
-              )),
-              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.green}},
-                React.createElement('span',{style:{width:10,height:10,borderRadius:2,background:C.green,opacity:.3,display:'inline-block'}}),
-                'Priorizar'
+            React.createElement(GlowBar,{value:scores.schema?.value||0,color:tier(scores.schema?.value||0).c,height:5}),
+            schemaWins.length>0&&React.createElement('div',{style:{marginTop:10,padding:'8px 10px',borderRadius:8,background:C.amberBg,border:`1px solid ${C.amber}20`,marginBottom:4}},
+              React.createElement('div',{style:{fontSize:10,color:C.amber,fontWeight:600,marginBottom:3}},'Pendências encontradas na auditoria:'),
+              schemaWins.map((w,i)=>React.createElement('div',{key:i,style:{fontSize:10,color:C.text2,marginBottom:1}},'+'+w.pts+' pts — '+w.action?.slice(0,55)))
+            ),
+            React.createElement('div',{style:{flex:1,display:'flex',flexDirection:'column',gap:3,marginTop:10,overflowY:'auto'}},
+              SCHEMA_LIST.map((s,i)=>{
+                const checked=schemaChecked.has(s.type);
+                const detectedByAudit=sourceData.schema_detail?.types_found?.includes(s.type);
+                const prioCcolor={high:C.red,medium:C.amber,low:C.text3}[s.prio];
+                const hasPending=schemaWins.some(w=>w.action?.toLowerCase().includes(s.type.toLowerCase()));
+                return React.createElement('div',{key:i,onClick:()=>!detectedByAudit&&toggleSchema(s.type),style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,cursor:detectedByAudit?'default':'pointer',transition:'all .2s',background:detectedByAudit?C.greenBg:hasPending?C.amberBg:'transparent',border:`1px solid ${detectedByAudit?C.green+'40':hasPending?C.amber+'30':C.border}`}},
+                  React.createElement('div',{style:{width:18,height:18,borderRadius:5,flexShrink:0,border:`2px solid ${detectedByAudit?C.green:checked?C.blue:C.border}`,background:detectedByAudit?C.green:checked?C.blue:'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s'}},
+                    (detectedByAudit||checked)&&React.createElement('span',{style:{color:'#fff',fontSize:10,lineHeight:1,fontWeight:700}},'✓')
+                  ),
+                  React.createElement('div',{style:{flex:1,minWidth:0}},
+                    React.createElement('div',{style:{fontSize:12,fontWeight:detectedByAudit?400:600,color:detectedByAudit?C.text3:C.text1,textDecoration:detectedByAudit?'line-through':'none'}},s.type),
+                    React.createElement('div',{style:{fontSize:9,color:C.text3,marginTop:1}},s.desc)
+                  ),
+                  detectedByAudit
+                    ?React.createElement('span',{style:{fontSize:8,fontWeight:700,color:C.green,background:C.greenBg,padding:'1px 5px',borderRadius:3,textTransform:'uppercase',flexShrink:0}},'✓ detectado')
+                    :hasPending
+                      ?React.createElement('span',{style:{fontSize:8,fontWeight:700,color:C.amber,background:C.amberBg,padding:'1px 5px',borderRadius:3,textTransform:'uppercase',flexShrink:0}},'⚠ pendente')
+                      :React.createElement('span',{style:{fontSize:8,fontWeight:700,color:prioCcolor,background:prioCcolor+'18',padding:'1px 5px',borderRadius:3,textTransform:'uppercase',flexShrink:0}},s.prio)
+                );
+              })
+            )
+          )
+        ),
+
+        /* ── Action Matrix (full width with quadrant labels) ── */
+        React.createElement('div',{style:{...cs,marginBottom:16}},
+          sl("Matriz esforço × impacto — priorização de quick wins"),
+          React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Cada ponto é um quick win. Hover para detalhes. Zona verde = máxima prioridade.'),
+          React.createElement(ResponsiveContainer,{width:'100%',height:isMobile?220:260},
+            React.createElement(ScatterChart,{margin:{top:8,right:16,bottom:24,left:8}},
+              React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border}),
+              React.createElement(XAxis,{type:'number',dataKey:'x',name:'Esforço',domain:[0,42],tick:{fill:C.text3,fontSize:10},ticks:[0.5,1,2,8,24,40],tickFormatter:v=>v<1?v*60+'min':v+'h',label:{value:'← Menos esforço    Mais esforço →',position:'insideBottom',offset:-12,fill:C.text3,fontSize:10}}),
+              React.createElement(YAxis,{type:'number',dataKey:'y',name:'Impacto (pts)',domain:[0,20],tick:{fill:C.text3,fontSize:10},label:{value:'↑ Impacto',angle:-90,position:'insideLeft',fill:C.text3,fontSize:10}}),
+              React.createElement(ZAxis,{range:[55,105]}),
+              React.createElement(Tooltip,{cursor:{stroke:C.border},content:({active,payload})=>{
+                if(!active||!payload?.length)return null;
+                const d=payload[0].payload;
+                return React.createElement('div',{style:{background:C.card,border:`1px solid ${d.fill}`,borderRadius:8,padding:'10px 14px',fontSize:12,maxWidth:240}},
+                  React.createElement('div',{style:{fontWeight:600,marginBottom:6,fontSize:12}},d.action?.slice(0,60)),
+                  React.createElement('div',{style:{display:'flex',gap:10}},
+                    React.createElement('span',{style:{color:d.fill}},d.category),
+                    React.createElement('span',{style:{color:C.green}},'+'+d.y+' pts'),
+                    React.createElement('span',{style:{color:C.text3}},'⏱ '+d.effort)
+                  ),
+                  React.createElement('div',{style:{color:C.amber,marginTop:4}},'ROI: '+d.roi+'× — ',d.roi>=3?'Excelente':d.roi>=1?'Bom':'Baixo')
+                );
+              }}),
+              React.createElement(ReferenceArea,{x1:0,x2:8,y1:8,y2:20,fill:C.green,fillOpacity:.06,stroke:C.green,strokeOpacity:.2}),
+              React.createElement(ReferenceArea,{x1:8,x2:42,y1:8,y2:20,fill:C.amber,fillOpacity:.03}),
+              React.createElement(ReferenceLine,{x:8,stroke:C.border,strokeDasharray:'5 3',strokeWidth:1.5}),
+              React.createElement(ReferenceLine,{y:8,stroke:C.border,strokeDasharray:'5 3',strokeWidth:1.5}),
+              React.createElement(Scatter,{data:actionMatrix,isAnimationActive:true},
+                actionMatrix.map((d,i)=>React.createElement(Cell,{key:i,fill:d.fill}))
               )
             )
+          ),
+          React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:6,marginTop:10}},
+            [{label:'⚡ Fazer Agora',desc:'Alto impacto · pouco esforço',c:C.green,bg:C.greenBg},
+             {label:'📋 Planejar no Sprint',desc:'Alto impacto · muito esforço',c:C.amber,bg:C.amberBg},
+             {label:'🔄 Reaproveitar Tempo',desc:'Baixo impacto · pouco esforço',c:C.blue,bg:C.blueBg},
+             {label:'✗ Reconsiderar',desc:'Baixo impacto · muito esforço',c:C.text3,bg:C.surface},
+            ].map((q,i)=>React.createElement('div',{key:i,style:{background:q.bg,border:`1px solid ${q.c}20`,borderRadius:8,padding:'8px 12px',display:'flex',gap:8,alignItems:'center'}},
+              React.createElement('div',null,
+                React.createElement('div',{style:{fontSize:12,fontWeight:600,color:q.c}},q.label),
+                React.createElement('div',{style:{fontSize:10,color:C.text3,marginTop:1}},q.desc)
+              )
+            ))
+          ),
+          React.createElement('div',{style:{display:'flex',gap:10,marginTop:10,flexWrap:'wrap'}},
+            Object.entries(CAT_C).map(([cat,col])=>React.createElement('div',{key:cat,style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}},
+              React.createElement('span',{style:{width:9,height:9,borderRadius:'50%',background:col,display:'inline-block'}}),cat
+            ))
+          )
+        ),
+
+        /* ── Page Technical Health (from raw audit page_meta) ── */
+        sourceData.page_meta&&React.createElement('div',{style:{...cs,marginBottom:16}},
+          sl("Saúde técnica da página — dados extraídos da auditoria"),
+          React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)',gap:8,marginTop:4}},
+            [
+              {label:'Título',value:sourceData.page_meta.title,ideal:'50–60 chars',len:sourceData.page_meta.title?.length||0,min:50,max:60},
+              {label:'Meta description',value:sourceData.page_meta.meta_description,ideal:'120–160 chars',len:sourceData.page_meta.meta_description?.length||0,min:120,max:160},
+            ].map((m,i)=>{
+              const ok=m.len>=m.min&&m.len<=m.max;
+              const warn=m.len>0&&!ok;
+              return React.createElement('div',{key:i,style:{background:ok?C.greenBg:warn?C.amberBg:C.redBg,border:`1px solid ${ok?C.green+'30':warn?C.amber+'30':C.red+'25'}`,borderRadius:10,padding:'10px 12px'}},
+                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:ok?C.green:warn?C.amber:C.red,fontWeight:700,marginBottom:5}},m.label),
+                React.createElement('div',{style:{fontSize:11,color:C.text1,lineHeight:1.4,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}},m.len>0?'"'+m.value.slice(0,40)+(m.value.length>40?'…':'')+'"':'— não encontrado'),
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                  React.createElement('span',{style:{fontSize:10,fontWeight:700,color:ok?C.green:warn?C.amber:C.red}},m.len+' chars'),
+                  React.createElement('span',{style:{fontSize:9,color:C.text3}},'ideal: '+m.ideal)
+                )
+              );
+            }).concat([
+              React.createElement('div',{key:'canonical',style:{background:sourceData.page_meta.canonical?C.greenBg:C.redBg,border:`1px solid ${sourceData.page_meta.canonical?C.green+'30':C.red+'25'}`,borderRadius:10,padding:'10px 12px'}},
+                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:sourceData.page_meta.canonical?C.green:C.red,fontWeight:700,marginBottom:5}},'Canonical'),
+                React.createElement('div',{style:{fontSize:11,color:C.text1,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},sourceData.page_meta.canonical||'— ausente'),
+                React.createElement('span',{style:{fontSize:10,fontWeight:700,color:sourceData.page_meta.canonical?C.green:C.red}},sourceData.page_meta.canonical?'✓ presente':'✗ ausente')
+              ),
+              React.createElement('div',{key:'tech',style:{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 12px'}},
+                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.text3,fontWeight:700,marginBottom:5}},'Tecnologia'),
+                React.createElement('div',{style:{fontSize:12,fontWeight:700,color:C.text1,marginBottom:3}},sourceData.page_meta.framework||sourceData.page_meta.cms||'Desconhecida'),
+                React.createElement('span',{style:{fontSize:10,fontWeight:600,color:sourceData.page_meta.is_ssr?C.green:C.amber}},sourceData.page_meta.is_ssr===true?'✓ SSR (crawlable)':sourceData.page_meta.is_ssr===false?'⚠ SPA (JS-only)':'— indefinido')
+              )
+            ])
           )
         ),
 
         React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'5fr 4fr',gap:16,marginBottom:16}},
 
-          /* ── High-Impact Findings ── */
+          /* ── High-Impact Findings (with copy) ── */
           React.createElement('div',{style:{...cs,margin:0}},
             sl("Findings por impacto no GEO Score"),
-            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:5}},
               topFindings.map((f,i)=>{
                 const sc=SEV[f.sev]||{c:C.text3,bg:C.surface,border:C.border,label:(f.sev||'').toUpperCase()};
-                return React.createElement('div',{key:i,style:{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,transition:'all .2s'}},
+                const cpKey='f'+i;
+                return React.createElement('div',{key:i,style:{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:8,background:C.surface,border:`1px solid ${C.border}`}},
                   React.createElement('div',{style:{width:36,height:36,borderRadius:8,background:sc.bg,border:`1px solid ${sc.border}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}},
                     React.createElement('span',{style:{fontSize:11,fontWeight:700,color:sc.c}},'+'+(f.impact_pts||0))
                   ),
                   React.createElement('div',{style:{flex:1,minWidth:0}},
-                    React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:3}},
+                    React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:3,flexWrap:'wrap'}},
                       React.createElement('span',{style:{fontSize:12,fontWeight:600}},f.title||f.desc?.slice(0,50)),
                       React.createElement('span',{style:{fontSize:9,fontWeight:700,letterSpacing:1,color:sc.c,background:sc.bg,padding:'1px 6px',borderRadius:4}},sc.label)
                     ),
                     React.createElement('div',{style:{fontSize:11,color:C.text3}},f.fix||f.desc)
                   ),
-                  React.createElement('div',{style:{fontSize:10,color:C.text3,flexShrink:0,whiteSpace:'nowrap',marginTop:2}},f.effort)
+                  React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:4,alignItems:'flex-end',flexShrink:0}},
+                    React.createElement('div',{style:{fontSize:10,color:C.text3,whiteSpace:'nowrap'}},f.effort),
+                    React.createElement('button',{
+                      onClick:()=>{navigator.clipboard?.writeText(f.fix||f.desc||'');setCopiedFoco(cpKey);setTimeout(()=>setCopiedFoco(null),2000);},
+                      style:{background:'none',border:`1px solid ${C.border}`,color:copiedFoco===cpKey?C.green:C.text3,fontSize:9,padding:'2px 7px',borderRadius:5,cursor:'pointer',whiteSpace:'nowrap',transition:'all .2s'}
+                    },copiedFoco===cpKey?'✓':'⎘ copiar')
+                  )
                 );
               })
             )
@@ -1204,21 +1387,33 @@ function App(){
           /* ── Brand Authority ── */
           React.createElement('div',{style:{...cs,margin:0}},
             sl("Brand authority — correlação com citações IA"),
-            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Score de correlação com citações por LLMs (Fishkin, 2024). Clique para verificar.'),
-            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Correlação com citações de IA (Fishkin, 2024). Presença verificada pela auditoria onde disponível.'),
+            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:7}},
               BRAND_PLATFORMS.map((p,i)=>{
                 const corr=Math.round(p.corr*100);
                 const searchQ=encodeURIComponent(data.brand||'Hotmart');
                 const urls={YouTube:`https://www.youtube.com/results?search_query=${searchQ}`,Reddit:`https://www.reddit.com/search/?q=${searchQ}`,Wikipedia:`https://en.wikipedia.org/wiki/Special:Search?search=${searchQ}`,Wikidata:`https://www.wikidata.org/w/index.php?search=${searchQ}`,LinkedIn:`https://www.linkedin.com/search/results/companies/?keywords=${searchQ}`};
-                return React.createElement('a',{key:i,href:urls[p.name],target:'_blank',rel:'noopener',style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,textDecoration:'none',color:C.text1,transition:'all .2s',cursor:'pointer'}},
-                  React.createElement('div',{style:{width:32,height:32,borderRadius:8,background:p.color+'18',border:`1px solid ${p.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:p.color,flexShrink:0}},p.icon),
+                // Actual audit presence (where available from brand_scanner)
+                const pres=sourceData.brand_presence;
+                const auditPresence={
+                  Wikipedia:pres?.wikipedia?.has_page!=null?pres.wikipedia.has_page:null,
+                  Wikidata:pres?.wikidata?.has_entry!=null?pres.wikidata.has_entry:null,
+                  YouTube:pres?.youtube?.has_presence!=null?pres.youtube.has_presence:null,
+                  Reddit:pres?.reddit?.has_presence!=null?pres.reddit.has_presence:null,
+                  LinkedIn:pres?.linkedin?.has_presence!=null?pres.linkedin.has_presence:null,
+                }[p.name];
+                return React.createElement('a',{key:i,href:urls[p.name],target:'_blank',rel:'noopener',style:{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:8,background:auditPresence===false?C.redBg:auditPresence===true?C.greenBg:C.surface,border:`1px solid ${auditPresence===false?C.red+'25':auditPresence===true?C.green+'30':C.border}`,textDecoration:'none',color:C.text1,cursor:'pointer'}},
+                  React.createElement('div',{style:{width:30,height:30,borderRadius:8,background:p.color+'18',border:`1px solid ${p.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:p.color,flexShrink:0}},p.icon),
                   React.createElement('div',{style:{flex:1}},
                     React.createElement('div',{style:{fontSize:12,fontWeight:600}},p.name),
                     React.createElement('div',{style:{fontSize:10,color:C.text3,marginTop:1}},p.desc)
                   ),
                   React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0}},
-                    React.createElement('div',{style:{fontSize:13,fontWeight:700,color:p.color,fontFamily:'monospace'}},corr+'%'),
-                    React.createElement('div',{style:{width:50,height:3,background:C.border,borderRadius:2}},
+                    auditPresence!==null&&auditPresence!==undefined
+                      ?React.createElement('span',{style:{fontSize:10,fontWeight:700,color:auditPresence?C.green:C.red,background:auditPresence?C.greenBg:C.redBg,padding:'2px 7px',borderRadius:5}},auditPresence?'✓ presente':'✗ ausente')
+                      :null,
+                    React.createElement('div',{style:{fontSize:12,fontWeight:700,color:p.color,fontFamily:'monospace'}},corr+'%'),
+                    React.createElement('div',{style:{width:48,height:3,background:C.border,borderRadius:2}},
                       React.createElement('div',{style:{width:corr+'%',height:'100%',background:p.color,borderRadius:2}})
                     )
                   )
@@ -1226,8 +1421,8 @@ function App(){
               })
             ),
             React.createElement('div',{style:{marginTop:12,padding:'10px 12px',borderRadius:8,background:C.amberBg,border:`1px solid ${C.amber}20`}},
-              React.createElement('div',{style:{fontSize:11,color:C.amber,fontWeight:600,marginBottom:3}},'Score Brand Authority: '+scores.brand_authority?.value+'/100'),
-              React.createElement('div',{style:{fontSize:10,color:C.text3}},'Presença ativa nestas plataformas é o fator de maior correlação com visibilidade em IA.')
+              React.createElement('div',{style:{fontSize:11,color:C.amber,fontWeight:600,marginBottom:3}},'Brand Authority: ',(scores.brand_authority?.value||0)+'/100'),
+              React.createElement('div',{style:{fontSize:10,color:C.text3}},'Presença ativa nestas plataformas é o principal fator de correlação com visibilidade em IA.')
             )
           )
         )
@@ -1430,6 +1625,23 @@ function mapAuditResult(r,old){
     quick_wins:r.quick_wins?.map(w=>({action:w.action,pts:w.pts,effort:w.effort,category:w.category||w.severity||'other'}))||old.quick_wins,
     scan_summary:r.scan_summary||null,
     sample_urls:r.sample_urls||null,
+    // ── New data sources (extracted from raw_result) ──
+    schema_detail:r.schema?{
+      types_found:r.schema.types_found||[],
+      has_organization:r.schema.has_organization||false,
+      has_faq:r.schema.has_faq||false,
+      coverage_pct:r.schema.coverage_pct||0,
+      recommended:r.schema.recommended||[],
+    }:null,
+    page_meta:r.page?{
+      title:r.page.title||'',
+      meta_description:r.page.meta_description||'',
+      canonical:r.page.canonical||'',
+      is_ssr:r.page.technology?.is_ssr,
+      framework:r.page.technology?.framework||null,
+      cms:r.page.technology?.cms||null,
+    }:null,
+    brand_presence:r.brand?.platforms||null,
   };
 }
 
