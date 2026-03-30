@@ -674,11 +674,36 @@ function App(){
             React.createElement('div',{style:{fontSize:11,color:C.text3,marginTop:4}},k.sub)
           ))
         ),
-        React.createElement('div',{style:cs},sl("Radar de categorias — clique nas barras acima para detalhes"),
+        React.createElement('div',{style:cs},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+            sl("Radar de categorias — clique nas barras acima para detalhes"),
+            React.createElement('button',{
+              onClick:()=>{
+                const cats=categoryData.map(c=>`  ${c.label}: ${c.value}/100 (peso ${c.weight}%)`).join('\n');
+                const topWin=[...sourceData.quick_wins].sort((a,b)=>(b.pts/(EFF_H[b.effort]||8))-(a.pts/(EFF_H[a.effort]||8)))[0];
+                const txt=[
+                  `GEO Score ${sourceData.brand||'Hotmart'}: ${sourceData.geo_score}/100`,
+                  `Competidor referência: ${sourceData.top_competitor.name} ${sourceData.top_competitor.score}/100 | Média do setor: ${sourceData.industry_avg}/100`,
+                  '',
+                  'Scores por categoria:',
+                  cats,
+                  '',
+                  `Score projetado (com quick wins): ${D.proj}/100 (+${D.totImpact} pts disponíveis)`,
+                  topWin?`Top ação de maior ROI: "${topWin.action}" (+${topWin.pts} pts · ${topWin.effort})`:'',
+                  `Gap vs competidor: ${D.gap} pts`,
+                  `Data da auditoria: ${sourceData.date}`,
+                ].filter(Boolean).join('\n');
+                navigator.clipboard?.writeText(txt);
+                setCopiedFoco('execsummary');
+                setTimeout(()=>setCopiedFoco(null),2500);
+              },
+              style:{background:copiedFoco==='execsummary'?C.green+'15':C.accent+'10',border:`1px solid ${copiedFoco==='execsummary'?C.green+'40':C.accent+'25'}`,color:copiedFoco==='execsummary'?C.green:C.accent,fontSize:10,fontWeight:600,padding:'5px 12px',borderRadius:7,cursor:'pointer',transition:'all .2s',flexShrink:0,whiteSpace:'nowrap'}
+            },copiedFoco==='execsummary'?'✓ Copiado':'⎘ Copiar resumo')
+          ),
           React.createElement(ResponsiveContainer,{width:"100%",height:280},
             React.createElement(RadarChart,{data:radarData},
               React.createElement(PolarGrid,{stroke:C.border}),
-              React.createElement(PolarAngleAxis,{dataKey:"subject",tick:{fill:C.text2,fontSize:10}}),
+              React.createElement(PolarAngleAxis,{dataKey:"subject",tick:{fill:C.text2,fontSize:isMobile?8:10},tickFormatter:v=>v.split(' (')[0]}),
               React.createElement(PolarRadiusAxis,{domain:[0,100],tickCount:5,tick:{fill:C.text3,fontSize:8},axisLine:false}),
               React.createElement(Radar,{name:"Anterior",dataKey:"previous",stroke:C.text3,fill:C.text3,fillOpacity:.08,strokeWidth:1,strokeDasharray:"4 4"}),
               React.createElement(Radar,{name:"Atual",dataKey:"current",stroke:C.accent,fill:C.accent,fillOpacity:.15,strokeWidth:2}),
@@ -738,7 +763,21 @@ function App(){
               React.createElement('span',{style:{color:cr.status?C.green:C.red,fontWeight:700}},cr.status?'✓':'✕'),
               React.createElement('span',{style:{fontFamily:'monospace',color:C.text2}},cr.name)
             ))
-          )
+          ),
+          (()=>{
+            const PLAT_TIPS={
+              'Google AI Overviews':'Implemente FAQPage schema e conteúdo autocontido. AIO prioriza respostas estruturadas com 134–167 palavras.',
+              'ChatGPT Search':'Mantenha GPTBot e OAI-SearchBot permitidos no robots.txt. Conteúdo com alta Statistical Density é citado com mais frequência.',
+              'Perplexity AI':'Crie llms.txt e permita PerplexityBot. Perplexity prioriza fontes com schema Organization e Wikipedia presence.',
+              'Google Gemini':'Mesma base que AI Overviews. Schema SoftwareApplication e Course aumentam presença em respostas sobre plataformas.',
+              'Bing Copilot':'Permita Bingbot. Schema Organization com sameAs para Wikipedia melhora entity recognition do Copilot.',
+            };
+            const tip=PLAT_TIPS[p.fullName];
+            return tip&&React.createElement('div',{style:{marginTop:10,padding:'8px 12px',borderRadius:8,background:p.color+'08',border:`1px solid ${p.color}20`}},
+              React.createElement('div',{style:{fontSize:9,color:p.color,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:3}},'Ação prioritária para '+p.name),
+              React.createElement('div',{style:{fontSize:11,color:C.text2,lineHeight:1.55}},tip)
+            );
+          })()
         )})(),
         platformData.map((p,i)=>React.createElement('div',{key:p.fullName,onClick:()=>setSelectedPlatform(selectedPlatform===p.fullName?null:p.fullName),style:{...cs,marginBottom:8,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,borderLeft:`3px solid ${p.color}`,cursor:'pointer',transition:'all .3s',background:selectedPlatform===p.fullName?p.color+'08':cs.background,borderColor:selectedPlatform===p.fullName?p.color+'30':C.border}},
           React.createElement('div',{style:{width:8,height:8,borderRadius:'50%',background:p.color,boxShadow:`0 0 8px ${p.color}60`,flexShrink:0}}),
@@ -751,13 +790,24 @@ function App(){
       /* ── CRAWLERS ── */
       tab==="crawlers"&&React.createElement('div',{className:'fade-up'},
         React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:20}},
-          [{label:"Permitidos",value:D.alw,color:C.green,bg:C.greenBg,filter:'allowed'},{label:"Bloqueados",value:D.blk,color:C.red,bg:C.redBg,filter:'blocked'},{label:"Críticos bloq.",value:D.critBlk,color:D.critBlk>0?C.red:C.green,bg:D.critBlk>0?C.redBg:C.greenBg,filter:'critical'},{label:"Cobertura",value:Math.round(D.alw/data.crawlers.length*100)+'%',color:tier(Math.round(D.alw/data.crawlers.length*100)).c,bg:C.card,filter:null}].map((k,i)=>
+          (()=>{
+            const critTotal=data.crawlers.filter(c=>c.critical).length;
+            const critOk=data.crawlers.filter(c=>c.critical&&c.status).length;
+            const critCov=critTotal>0?Math.round(critOk/critTotal*100):100;
+            return[
+              {label:"Permitidos",value:D.alw,color:C.green,bg:C.greenBg,filter:'allowed'},
+              {label:"Bloqueados",value:D.blk,color:C.red,bg:C.redBg,filter:'blocked'},
+              {label:"Críticos bloq.",value:D.critBlk,color:D.critBlk>0?C.red:C.green,bg:D.critBlk>0?C.redBg:C.greenBg,filter:'critical'},
+              {label:"Cobertura crítica",value:critCov+'%',color:tier(critCov).c,bg:C.card,filter:null,sub:critOk+'/'+critTotal+' crawlers IA críticos'},
+            ];
+          })().map((k,i)=>
             React.createElement('div',{key:i,onClick:()=>k.filter&&setSelectedCrawlerFilter(selectedCrawlerFilter===k.filter?null:k.filter),style:{...cs,marginBottom:0,padding:'12px 14px',background:selectedCrawlerFilter===k.filter?k.color+'12':k.bg,borderColor:selectedCrawlerFilter===k.filter?k.color+'40':k.color+'20',cursor:k.filter?'pointer':'default',transition:'all .3s',transform:selectedCrawlerFilter===k.filter?'scale(1.02)':'scale(1)'}},
               React.createElement('div',{style:{fontSize:10,color:C.text3,textTransform:'uppercase',letterSpacing:2,marginBottom:5,display:'flex',justifyContent:'space-between'}},
                 React.createElement('span',null,k.label),
                 k.filter&&React.createElement('span',{style:{fontSize:8,color:selectedCrawlerFilter===k.filter?k.color:C.text3}},selectedCrawlerFilter===k.filter?'✕ limpar':'clique')
               ),
-              React.createElement('div',{style:{fontSize:26,fontWeight:800,color:k.color,fontFamily:'monospace'}},k.value)
+              React.createElement('div',{style:{fontSize:26,fontWeight:800,color:k.color,fontFamily:'monospace'}},k.value),
+              k.sub&&React.createElement('div',{style:{fontSize:10,color:C.text3,marginTop:4}},k.sub)
             ))
         ),
         React.createElement('div',{style:cs},
@@ -772,19 +822,49 @@ function App(){
             selectedCrawlerFilter&&React.createElement('button',{onClick:()=>setSelectedCrawlerFilter(null),style:{background:C.accent+'15',border:`1px solid ${C.accent}30`,color:C.accent,fontSize:10,fontWeight:600,padding:'4px 10px',borderRadius:6,cursor:'pointer'}},'Ver todos')
           ),
           React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:6}},
-            data.crawlers.filter(cr=>{
-              if(!selectedCrawlerFilter)return true;
-              if(selectedCrawlerFilter==='allowed')return cr.status;
-              if(selectedCrawlerFilter==='blocked')return!cr.status;
-              if(selectedCrawlerFilter==='critical')return!cr.status&&cr.critical;
-              return true;
-            }).map(cr=>React.createElement('div',{key:cr.name,onMouseEnter:()=>setHovCr(cr.name),onMouseLeave:()=>setHovCr(null),style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 12px',borderRadius:9,background:hovCr===cr.name?C.hover:(cr.status?C.green+'06':C.red+'06'),border:`1px solid ${cr.status?C.green+'15':C.red+'15'}`,borderLeft:`3px solid ${cr.status?C.green:C.red}`,transition:'all .2s'}},
-              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},
-                cr.critical&&React.createElement('div',{style:{width:5,height:5,borderRadius:'50%',background:C.accent,boxShadow:`0 0 5px ${C.accent}80`,flexShrink:0}}),
-                React.createElement('div',null,React.createElement('div',{style:{fontSize:12,fontWeight:600,fontFamily:'monospace'}},cr.name),React.createElement('div',{style:{fontSize:10,color:C.text3}},cr.platform))
-              ),
-              React.createElement('div',{style:{fontSize:10,fontWeight:700,letterSpacing:1,color:cr.status?C.green:C.red,background:cr.status?C.greenBg:C.redBg,padding:'2px 8px',borderRadius:16,border:`1px solid ${cr.status?C.green+'30':C.red+'30'}`}},cr.status?'✓ OK':'✕ BLOCKED')
-            ))
+            (()=>{
+              // Priority lookup: critical crawlers and their associated AI platform importance
+              const CRAWL_INFO={
+                'GPTBot':{prio:'alta',impact:'ChatGPT indexação e treinamento'},
+                'OAI-SearchBot':{prio:'alta',impact:'ChatGPT Search — citações diretas'},
+                'ChatGPT-User':{prio:'alta',impact:'ChatGPT Browse — respostas em tempo real'},
+                'ClaudeBot':{prio:'alta',impact:'Claude + Perplexity AI'},
+                'anthropic-ai':{prio:'alta',impact:'Claude (treinamento)'},
+                'PerplexityBot':{prio:'alta',impact:'Perplexity AI — citações com fontes'},
+                'Google-Extended':{prio:'alta',impact:'Gemini + AI Overviews'},
+                'Googlebot':{prio:'média',impact:'Google Search orgânico'},
+                'Bingbot':{prio:'média',impact:'Bing Copilot'},
+                'Meta-ExternalAgent':{prio:'média',impact:'Meta AI'},
+                'Bytespider':{prio:'baixa',impact:'TikTok / Doubao AI'},
+                'cohere-ai':{prio:'baixa',impact:'Cohere Command'},
+                'Diffbot':{prio:'baixa',impact:'Vários produtos de IA'},
+                'CCBot':{prio:'baixa',impact:'Common Crawl'},
+                'YouBot':{prio:'baixa',impact:'You.com'},
+              };
+              const prioBg={alta:C.red+'08',média:C.amber+'08',baixa:C.surface};
+              const prioC={alta:C.red,média:C.amber,baixa:C.text3};
+              return data.crawlers.filter(cr=>{
+                if(!selectedCrawlerFilter)return true;
+                if(selectedCrawlerFilter==='allowed')return cr.status;
+                if(selectedCrawlerFilter==='blocked')return!cr.status;
+                if(selectedCrawlerFilter==='critical')return!cr.status&&cr.critical;
+                return true;
+              }).map(cr=>{
+                const info=CRAWL_INFO[cr.name]||{prio:'baixa',impact:cr.platform};
+                return React.createElement('div',{key:cr.name,onMouseEnter:()=>setHovCr(cr.name),onMouseLeave:()=>setHovCr(null),style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 12px',borderRadius:9,background:hovCr===cr.name?C.hover:(cr.status?C.green+'06':C.red+'08'),border:`1px solid ${cr.status?C.green+'15':C.red+'20'}`,borderLeft:`3px solid ${cr.status?C.green:C.red}`,transition:'all .2s'}},
+                  React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}},
+                    React.createElement('div',{style:{minWidth:0}},
+                      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:2}},
+                        React.createElement('span',{style:{fontSize:12,fontWeight:600,fontFamily:'monospace'}},cr.name),
+                        React.createElement('span',{style:{fontSize:8,fontWeight:700,color:prioC[info.prio],background:prioC[info.prio]+'18',padding:'1px 5px',borderRadius:3,textTransform:'uppercase',letterSpacing:.5,flexShrink:0}},info.prio)
+                      ),
+                      React.createElement('div',{style:{fontSize:10,color:C.text3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},info.impact)
+                    )
+                  ),
+                  React.createElement('div',{style:{fontSize:10,fontWeight:700,letterSpacing:1,color:cr.status?C.green:C.red,background:cr.status?C.greenBg:C.redBg,padding:'2px 8px',borderRadius:16,border:`1px solid ${cr.status?C.green+'30':C.red+'30'}`,flexShrink:0}},cr.status?'✓ OK':'✕ BLOCKED')
+                );
+              });
+            })()
           )
         )
       ),
@@ -808,14 +888,43 @@ function App(){
             ))
           )
         )})(),
-        (selectedSev?data.findings.filter(f=>f.sev===selectedSev):data.findings).map((f,i)=>{const cfg=SEV[f.sev]||SEV.medium;return React.createElement('div',{key:i,style:{...cs,padding:'16px 20px',background:cfg.bg,borderColor:cfg.border,borderLeft:`4px solid ${cfg.c}`}},
-          React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,flexWrap:'wrap',gap:6}},
-            React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},React.createElement('span',{style:{fontSize:10,fontWeight:700,letterSpacing:1.5,color:cfg.c,background:cfg.c+'15',padding:'2px 7px',borderRadius:4}},cfg.label),React.createElement('span',{style:{fontSize:14,fontWeight:600}},f.title)),
-            React.createElement('span',{style:{fontSize:12,fontWeight:700,color:C.green,fontFamily:'monospace',background:C.greenBg,padding:'2px 8px',borderRadius:6}},'+'+f.impact_pts+' pts')
-          ),
-          React.createElement('div',{style:{fontSize:13,color:C.text2,lineHeight:1.7,marginBottom:10}},f.desc),
-          React.createElement('div',{style:{display:'flex',gap:14,flexWrap:'wrap',fontSize:11,color:C.text3}},React.createElement('span',null,React.createElement('span',{style:{color:C.blue}},'Fix: '),f.fix),React.createElement('span',{style:{marginLeft:'auto'}},'⏱ ',f.effort))
-        )})
+        (()=>{
+          const findList=(selectedSev?data.findings.filter(f=>f.sev===selectedSev):[...data.findings].sort((a,b)=>(b.impact_pts||0)-(a.impact_pts||0)));
+          const totalImpact=findList.reduce((s,f)=>s+(f.impact_pts||0),0);
+          return React.createElement(React.Fragment,null,
+            !selectedSev&&React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,padding:'8px 14px',background:C.greenBg,border:`1px solid ${C.green}20`,borderRadius:9}},
+              React.createElement('span',{style:{fontSize:11,color:C.text2}},'Ordenado por impacto · '+findList.length+' findings · total: ',React.createElement('span',{style:{color:C.green,fontWeight:700}},'+'+totalImpact+' pts disponíveis')),
+              React.createElement('button',{
+                onClick:()=>{const txt=findList.map((f,i)=>`${i+1}. [${(f.sev||'').toUpperCase()}] ${f.title}\n   Fix: ${f.fix}\n   Impacto: +${f.impact_pts||0} pts | Esforço: ${f.effort}`).join('\n\n');navigator.clipboard?.writeText(txt);setCopiedFoco('allfindings');setTimeout(()=>setCopiedFoco(null),2500);},
+                style:{background:copiedFoco==='allfindings'?C.green+'15':'none',border:`1px solid ${copiedFoco==='allfindings'?C.green+'40':C.border}`,color:copiedFoco==='allfindings'?C.green:C.text3,fontSize:10,padding:'4px 10px',borderRadius:6,cursor:'pointer',transition:'all .2s',whiteSpace:'nowrap'}
+              },copiedFoco==='allfindings'?'✓ Copiados':'⎘ Copiar todos')
+            ),
+            ...findList.map((f,i)=>{
+              const cfg=SEV[f.sev]||SEV.medium;
+              const cpKey='fin'+i;
+              return React.createElement('div',{key:i,style:{...cs,padding:'14px 18px',background:cfg.bg,borderColor:cfg.border,borderLeft:`4px solid ${cfg.c}`,marginBottom:8}},
+                React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6,flexWrap:'wrap',gap:6}},
+                  React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},
+                    React.createElement('span',{style:{fontSize:10,fontWeight:700,letterSpacing:1.5,color:cfg.c,background:cfg.c+'15',padding:'2px 7px',borderRadius:4}},cfg.label),
+                    React.createElement('span',{style:{fontSize:14,fontWeight:600}},f.title)
+                  ),
+                  React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+                    React.createElement('span',{style:{fontSize:12,fontWeight:700,color:C.green,fontFamily:'monospace',background:C.greenBg,padding:'2px 8px',borderRadius:6}},'+'+f.impact_pts+' pts'),
+                    React.createElement('button',{
+                      onClick:()=>{navigator.clipboard?.writeText('['+cfg.label+'] '+f.title+'\nFix: '+(f.fix||f.desc||'')+'\nEsforço: '+f.effort+' | +'+f.impact_pts+' pts');setCopiedFoco(cpKey);setTimeout(()=>setCopiedFoco(null),2000);},
+                      style:{background:'none',border:`1px solid ${copiedFoco===cpKey?C.green+'40':C.border}`,color:copiedFoco===cpKey?C.green:C.text3,fontSize:9,padding:'3px 8px',borderRadius:5,cursor:'pointer',whiteSpace:'nowrap',transition:'all .2s'}
+                    },copiedFoco===cpKey?'✓':'⎘ copiar')
+                  )
+                ),
+                React.createElement('div',{style:{fontSize:12,color:C.text2,lineHeight:1.7,marginBottom:8}},f.desc),
+                React.createElement('div',{style:{display:'flex',gap:14,flexWrap:'wrap',fontSize:11,color:C.text3,alignItems:'center'}},
+                  React.createElement('span',null,React.createElement('span',{style:{color:C.blue,fontWeight:600}},'Fix: '),f.fix),
+                  React.createElement('span',{style:{marginLeft:'auto',flexShrink:0}},'⏱ ',f.effort)
+                )
+              );
+            })
+          );
+        })()
       ),
 
       /* ── CITABILITY ── */
@@ -873,6 +982,39 @@ function App(){
           )
         ),
 
+        /* ─ Top Performers: blocos A como template ─ */
+        (()=>{
+          const topBlocks=data.citability_blocks.filter(b=>b.grade==='A'||b.grade==='B').sort((a,b)=>b.score-a.score).slice(0,3);
+          if(!topBlocks.length)return null;
+          return React.createElement('div',{style:{...cs,marginBottom:16,background:`linear-gradient(135deg,${C.green}06,${C.card})`,borderColor:C.green+'25',borderLeft:`4px solid ${C.green}`}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+              React.createElement('div',null,
+                sl("Top performers — use como template de estrutura"),
+                React.createElement('div',{style:{fontSize:10,color:C.text3,marginTop:2}},'Blocos com maior citabilidade: replique palavras, estrutura e densidade estatística.')
+              ),
+              React.createElement('button',{
+                onClick:()=>{const txt=topBlocks.map((b,i)=>`#${i+1} [Grade ${b.grade} · ${b.score}/100]\nHeading: "${b.heading}"\n${b.words} palavras · AQ:${b.answer_quality} · SC:${b.self_contain} · SD:${b.stat_density}`).join('\n\n');navigator.clipboard?.writeText(txt);setCopiedFoco('topblocks');setTimeout(()=>setCopiedFoco(null),2500);},
+                style:{background:copiedFoco==='topblocks'?C.green+'15':'none',border:`1px solid ${copiedFoco==='topblocks'?C.green+'40':C.border}`,color:copiedFoco==='topblocks'?C.green:C.text3,fontSize:10,padding:'4px 10px',borderRadius:6,cursor:'pointer',transition:'all .2s',flexShrink:0,whiteSpace:'nowrap'}
+              },copiedFoco==='topblocks'?'✓ Copiados':'⎘ Copiar templates')
+            ),
+            React.createElement('div',{style:{display:'grid',gridTemplateColumns:`repeat(${isMobile?1:topBlocks.length},1fr)`,gap:8}},
+              topBlocks.map((b,i)=>React.createElement('div',{key:i,style:{background:C.surface,borderRadius:10,padding:'10px 12px',border:`1px solid ${C.green}20`}},
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}},
+                  React.createElement('span',{style:{fontSize:11,fontWeight:700,color:GRADE_C[b.grade]||C.green,fontFamily:'monospace',background:(GRADE_C[b.grade]||C.green)+'18',padding:'1px 7px',borderRadius:4}},'Grade '+b.grade),
+                  React.createElement('span',{style:{fontSize:14,fontWeight:800,color:GRADE_C[b.grade]||C.green,fontFamily:'monospace'}},b.score+'/100')
+                ),
+                React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:6,color:C.text1,lineHeight:1.35}},b.heading||'—'),
+                React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3,fontSize:10,color:C.text3}},
+                  React.createElement('span',null,'Palavras: ',React.createElement('b',{style:{color:b.words>=134&&b.words<=167?C.green:C.amber}},b.words)),
+                  React.createElement('span',null,'Answer Q: ',React.createElement('b',{style:{color:tier(b.answer_quality).c}},b.answer_quality)),
+                  React.createElement('span',null,'Self-cont.: ',React.createElement('b',{style:{color:tier(b.self_contain).c}},b.self_contain)),
+                  React.createElement('span',null,'Stat dens.: ',React.createElement('b',{style:{color:tier(b.stat_density).c}},b.stat_density))
+                )
+              ))
+            )
+          );
+        })(),
+
         /* ─ DRILL-DOWN: Grade detail panel (shown when clicking donut slice) ─ */
         selectedGrade&&(()=>{const gc={A:C.green,B:C.blue,C:C.amber,D:"#f97316",F:C.red};const gradeColor=gc[selectedGrade]||C.text3;const gradeBlocks=[...data.citability_blocks].filter(b=>b.grade===selectedGrade).sort((a,b)=>b.score-a.score);const avgScore=gradeBlocks.length?Math.round(gradeBlocks.reduce((s,b)=>s+b.score,0)/gradeBlocks.length):0;const avgWords=gradeBlocks.length?Math.round(gradeBlocks.reduce((s,b)=>s+b.words,0)/gradeBlocks.length):0;return React.createElement('div',{style:{...cs,marginBottom:16,background:`linear-gradient(135deg,${gradeColor}08,${C.card})`,borderColor:gradeColor+'30',borderLeft:`4px solid ${gradeColor}`,animation:'fadeUp .3s ease both'}},
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}},
@@ -883,7 +1025,13 @@ function App(){
                 React.createElement('span',null,gradeBlocks.length,' bloco(s) com grade ',selectedGrade)
               )
             ),
-            React.createElement('button',{onClick:()=>setSelectedGrade(null),style:{background:'none',border:`1px solid ${C.border}`,color:C.text3,fontSize:14,width:28,height:28,borderRadius:6,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}},'✕')
+            React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+              ['D','F'].includes(selectedGrade)&&React.createElement('button',{
+                onClick:()=>{const txt=gradeBlocks.map((b,i)=>`${i+1}. "${b.heading}" — ${b.words} pal. · score ${b.score}/100 · ${b.words<100?'muito curto':b.words>200?'muito longo':'reestruturar'}`).join('\n');navigator.clipboard?.writeText(txt);setCopiedFoco('dfblocks');setTimeout(()=>setCopiedFoco(null),2500);},
+                style:{background:copiedFoco==='dfblocks'?C.green+'15':'none',border:`1px solid ${copiedFoco==='dfblocks'?C.green+'40':gradeColor+'30'}`,color:copiedFoco==='dfblocks'?C.green:gradeColor,fontSize:9,padding:'4px 10px',borderRadius:6,cursor:'pointer',whiteSpace:'nowrap',transition:'all .2s'}
+              },copiedFoco==='dfblocks'?'✓ Copiados':'⎘ Copiar lista'),
+              React.createElement('button',{onClick:()=>setSelectedGrade(null),style:{background:'none',border:`1px solid ${C.border}`,color:C.text3,fontSize:14,width:28,height:28,borderRadius:6,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}},'✕')
+            )
           ),
           React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:14}},
             [{label:'Total blocos',value:gradeBlocks.length,color:gradeColor},
@@ -1068,27 +1216,55 @@ function App(){
           ),
           React.createElement(GlowBar,{value:Math.round((w.cumulative/D.proj)*100),color:C.green,height:6})
         )})(),
-        React.createElement('div',{style:cs},sl("Quick wins por ROI"),
-          [...data.quick_wins].sort((a,b)=>{const em={"30min":.5,"1h":1,"2h":2,"1d":8,"3d":24,"1w":40};return(b.pts/(em[b.effort]||5))-(a.pts/(em[a.effort]||5))}).map((w,i)=>{
-            const em={"30min":.5,"1h":1,"2h":2,"1d":8,"3d":24,"1w":40};const roi=w.pts/(em[w.effort]||5);const roiC=roi>=3?C.green:roi>=1?C.amber:C.text3;
+        React.createElement('div',{style:cs},sl("Quick wins por ROI — agrupados por sprint"),
+          (()=>{
+            const sorted=[...data.quick_wins].sort((a,b)=>(b.pts/(EFF_H[b.effort]||8))-(a.pts/(EFF_H[a.effort]||8)));
             const cc={crawlers:C.blue,llmstxt:C.purple,schema:C.accent,eeat:C.amber,citability:C.green,brand:"#f97316"};
-            const isSel=selectedQuickWin&&selectedQuickWin.action===w.action;
-            return React.createElement('div',{key:i,onClick:()=>setSelectedQuickWin(isSel?null:{...w,...impactData.find(d=>d.action===w.action)}),style:{display:'flex',alignItems:'flex-start',gap:12,padding:'14px 8px',borderBottom:i<data.quick_wins.length-1?`1px solid ${C.border}`:'none',cursor:'pointer',borderRadius:8,background:isSel?C.green+'10':'transparent',border:isSel?`1px solid ${C.green}25`:'1px solid transparent',transition:'all .2s',marginBottom:2}},
-              React.createElement('div',{style:{width:26,height:26,borderRadius:7,background:isSel?C.green+'25':C.green+'12',border:`1px solid ${C.green}${isSel?'60':'30'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:C.green,fontFamily:'monospace',flexShrink:0,marginTop:2}},i+1),
-              React.createElement('div',{style:{flex:1}},
-                React.createElement('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:3,flexWrap:'wrap'}},
-                  React.createElement('span',{style:{fontSize:13,fontWeight:600}},w.action),
-                  React.createElement('span',{style:{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:(cc[w.category]||C.text3),background:(cc[w.category]||C.text3)+'15',padding:'1px 6px',borderRadius:4}},w.category)
+            const SPRINTS=[
+              {label:'Sprint 1 — Prioridade máxima',desc:'ROI ≥ 3× · executar esta semana',color:C.green,filter:w=>w.pts/(EFF_H[w.effort]||8)>=3},
+              {label:'Sprint 2 — Segunda onda',desc:'ROI 1–3× · planejar para próximo sprint',color:C.amber,filter:w=>{const r=w.pts/(EFF_H[w.effort]||8);return r>=1&&r<3;}},
+              {label:'Backlog',desc:'ROI < 1× · avaliar custo/benefício',color:C.text3,filter:w=>w.pts/(EFF_H[w.effort]||8)<1},
+            ];
+            let globalIdx=0;
+            return SPRINTS.map((sprint,si)=>{
+              const wins=sorted.filter(sprint.filter);
+              if(!wins.length)return null;
+              return React.createElement('div',{key:si,style:{marginBottom:16}},
+                React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,background:sprint.color+'10',border:`1px solid ${sprint.color}20`,marginBottom:8}},
+                  React.createElement('span',{style:{width:8,height:8,borderRadius:'50%',background:sprint.color,flexShrink:0,display:'inline-block'}}),
+                  React.createElement('div',{style:{flex:1}},
+                    React.createElement('span',{style:{fontSize:12,fontWeight:700,color:sprint.color}},sprint.label),
+                    React.createElement('span',{style:{fontSize:10,color:C.text3,marginLeft:8}},sprint.desc)
+                  ),
+                  React.createElement('span',{style:{fontSize:11,color:sprint.color,fontWeight:600,background:sprint.color+'18',padding:'1px 8px',borderRadius:12}},wins.length+' ações · +'+wins.reduce((s,w)=>s+w.pts,0)+' pts')
                 ),
-                React.createElement('div',{style:{display:'flex',gap:14,fontSize:11,color:C.text3}},
-                  React.createElement('span',null,'+',React.createElement('b',{style:{color:C.green,fontFamily:'monospace'}},w.pts),' pts'),
-                  React.createElement('span',null,'⏱ ',w.effort),
-                  React.createElement('span',null,'ROI: ',React.createElement('b',{style:{color:roiC,fontFamily:'monospace'}},roi.toFixed(1),'×'))
-                )
-              ),
-              React.createElement('span',{style:{fontSize:9,color:C.text3,transition:'transform .2s',display:'inline-block',transform:isSel?'rotate(90deg)':'rotate(0deg)',marginTop:8}},'▸')
-            )
-          })
+                wins.map((w,i)=>{
+                  const roi=w.pts/(EFF_H[w.effort]||8);const roiC=roi>=3?C.green:roi>=1?C.amber:C.text3;
+                  const isSel=selectedQuickWin&&selectedQuickWin.action===w.action;
+                  const idx=++globalIdx;
+                  const cpKey='qw'+si+i;
+                  return React.createElement('div',{key:i,style:{display:'flex',alignItems:'flex-start',gap:10,padding:'12px 10px',borderBottom:i<wins.length-1?`1px solid ${C.border}`:'none',cursor:'pointer',borderRadius:8,background:isSel?C.green+'10':'transparent',border:isSel?`1px solid ${C.green}25`:'1px solid transparent',transition:'all .2s',marginBottom:2}},
+                    React.createElement('div',{style:{width:24,height:24,borderRadius:6,background:isSel?C.green+'25':sprint.color+'15',border:`1px solid ${sprint.color}${isSel?'60':'30'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:sprint.color,fontFamily:'monospace',flexShrink:0,marginTop:1},onClick:()=>setSelectedQuickWin(isSel?null:{...w,...impactData.find(d=>d.action===w.action)})},idx),
+                    React.createElement('div',{style:{flex:1},onClick:()=>setSelectedQuickWin(isSel?null:{...w,...impactData.find(d=>d.action===w.action)})},
+                      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:3,flexWrap:'wrap'}},
+                        React.createElement('span',{style:{fontSize:13,fontWeight:600}},w.action),
+                        React.createElement('span',{style:{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:(cc[w.category]||C.text3),background:(cc[w.category]||C.text3)+'15',padding:'1px 6px',borderRadius:4}},w.category)
+                      ),
+                      React.createElement('div',{style:{display:'flex',gap:12,fontSize:11,color:C.text3}},
+                        React.createElement('span',null,'+',React.createElement('b',{style:{color:C.green,fontFamily:'monospace'}},w.pts),' pts'),
+                        React.createElement('span',null,'⏱ ',w.effort),
+                        React.createElement('span',null,'ROI: ',React.createElement('b',{style:{color:roiC,fontFamily:'monospace'}},roi.toFixed(1),'×'))
+                      )
+                    ),
+                    React.createElement('button',{
+                      onClick:(e)=>{e.stopPropagation();navigator.clipboard?.writeText('['+w.category.toUpperCase()+'] '+w.action+'\nImpacto: +'+w.pts+' pts | Esforço: '+w.effort+' | ROI: '+roi.toFixed(1)+'×');setCopiedFoco(cpKey);setTimeout(()=>setCopiedFoco(null),2000);},
+                      style:{background:'none',border:`1px solid ${copiedFoco===cpKey?C.green+'40':C.border}`,color:copiedFoco===cpKey?C.green:C.text3,fontSize:9,padding:'3px 7px',borderRadius:5,cursor:'pointer',flexShrink:0,transition:'all .2s',marginTop:2}
+                    },copiedFoco===cpKey?'✓':'⎘')
+                  );
+                })
+              );
+            });
+          })()
         ),
         React.createElement('div',{style:{...cs,background:`linear-gradient(135deg,${C.greenBg},${C.card})`,borderColor:C.green+'20',textAlign:'center',padding:24}},
           React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:18}},
