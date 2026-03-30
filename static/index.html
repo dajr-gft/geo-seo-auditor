@@ -201,7 +201,7 @@ const derive=d=>{
   const delta=d.previous_score?d.geo_score-d.previous_score:null;
   const gap=d.top_competitor.score-d.geo_score;
   const totBlocks=Object.values(d.grades).reduce((a,b)=>a+b,0);
-  const citable=(d.grades.A||0)+(d.grades.B||0);
+  const citable=(d.grades.A||0)+(d.grades.B||0)+(d.grades.C||0);
   const citRatio=totBlocks>0?Math.round(citable/totBlocks*100):0;
   return{alw,blk,critBlk,totImpact,proj,delta,gap,totBlocks,citable,citRatio};
 };
@@ -497,6 +497,17 @@ function App(){
 
   const schemaWins=useMemo(()=>sourceData.quick_wins.filter(w=>w.category==='schema'),[sourceData.quick_wins]);
 
+  // Rewrite queue: D/F blocks sorted by upgrade potential (closest to 134 words wins more)
+  const rewriteQueue=useMemo(()=>{
+    const bad=sourceData.citability_blocks.filter(b=>b.grade==='D'||b.grade==='F'||b.grade==='C');
+    return bad.sort((a,b)=>{
+      // Priority: F first, then D, then C; within same grade by score ascending
+      const gScore={F:0,D:1,C:2};
+      const diff=(gScore[a.grade]??3)-(gScore[b.grade]??3);
+      return diff!==0?diff:(a.score||0)-(b.score||0);
+    }).slice(0,8);
+  },[sourceData.citability_blocks]);
+
   // Auto-initialize schema checklist from audit-detected types
   useEffect(()=>{
     const found=sourceData.schema_detail?.types_found;
@@ -654,7 +665,7 @@ function App(){
         ),
         React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:20}},
           [{label:"Crawlers OK",value:D.alw,suffix:`/${data.crawlers.length}`,color:D.blk>3?C.red:C.green,sub:`${D.critBlk} críticos bloq.`},
-           {label:"Blocos citáveis",value:D.citRatio,suffix:'%',color:tier(D.citRatio).c,sub:`${D.citable} de ${D.totBlocks}`},
+           {label:"Citáveis ≥ C",value:D.citRatio,suffix:'%',color:tier(D.citRatio).c,sub:`${D.citable} de ${D.totBlocks}`},
            {label:"Score projetado",value:D.proj,suffix:'',color:tier(D.proj).c,sub:`+${D.totImpact} pts`},
            {label:"Gap competitivo",value:D.gap,suffix:'',color:C.red,sub:`vs ${data.top_competitor.name}`},
           ].map((k,i)=>React.createElement('div',{key:i,style:{...cs,padding:'14px 16px',marginBottom:0}},
@@ -1096,6 +1107,26 @@ function App(){
       /* ── SEO TAB ── */
       tab==="seo"&&React.createElement('div',{className:'fade-up'},
 
+        /* ── SEO PULSE STRIP ── */
+        React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12,padding:'10px 14px',background:C.card,borderRadius:12,border:`1px solid ${C.border}`}},
+          [
+            {label:'GEO Score',value:sourceData.geo_score+'/100',color:tier(sourceData.geo_score).c,icon:'◎'},
+            {label:'Schemas',value:(sourceData.schema_detail?.types_found?.length||0)+'/'+SCHEMA_LIST.length,color:sourceData.schema_detail?.types_found?.length>=4?C.green:C.amber,icon:'❋'},
+            {label:'Título',value:sourceData.page_meta?(sourceData.page_meta.title?.length>=50&&sourceData.page_meta.title?.length<=60?'✓ ok':'⚠ ajustar'):'—',color:sourceData.page_meta?(sourceData.page_meta.title?.length>=50&&sourceData.page_meta.title?.length<=60?C.green:C.amber):C.text3,icon:'T'},
+            {label:'Meta',value:sourceData.page_meta?(sourceData.page_meta.meta_description?.length>=120&&sourceData.page_meta.meta_description?.length<=160?'✓ ok':'⚠ ajustar'):'—',color:sourceData.page_meta?(sourceData.page_meta.meta_description?.length>=120&&sourceData.page_meta.meta_description?.length<=160?C.green:C.amber):C.text3,icon:'M'},
+            {label:'Canonical',value:sourceData.page_meta?(sourceData.page_meta.canonical?'✓ ok':'✗ ausente'):'—',color:sourceData.page_meta?(sourceData.page_meta.canonical?C.green:C.red):C.text3,icon:'⊕'},
+            {label:'SSR',value:sourceData.page_meta?(sourceData.page_meta.is_ssr===true?'✓ sim':sourceData.page_meta.is_ssr===false?'✗ SPA':'—'):'—',color:sourceData.page_meta?(sourceData.page_meta.is_ssr===true?C.green:sourceData.page_meta.is_ssr===false?C.red:C.text3):C.text3,icon:'⚙'},
+            {label:'Blocos D/F',value:contentStats.df+'/'+contentStats.total,color:contentStats.df>0?C.red:C.green,icon:'◇'},
+            {label:'Score proj.',value:D.proj+'/100',color:tier(D.proj).c,icon:'→'},
+          ].map((s,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:7,background:s.color+'10',border:`1px solid ${s.color}20`,flexShrink:0}},
+            React.createElement('span',{style:{fontSize:9,color:s.color,opacity:.7}},s.icon+' '),
+            React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:9,color:C.text3,lineHeight:1}},s.label),
+              React.createElement('div',{style:{fontSize:11,fontWeight:700,color:s.color,lineHeight:1.3,fontFamily:'monospace'}},s.value)
+            )
+          ))
+        ),
+
         /* ── FOCO DE HOJE ── */
         React.createElement('div',{style:{marginBottom:16}},
           React.createElement('div',{style:{fontSize:10,color:C.text3,textTransform:'uppercase',letterSpacing:2.5,fontWeight:600,marginBottom:10}},'⚡ Foco de hoje — ações específicas baseadas na auditoria'),
@@ -1319,36 +1350,102 @@ function App(){
           )
         ),
 
-        /* ── Page Technical Health (from raw audit page_meta) ── */
+        /* ── Page Technical Health + SERP Preview ── */
         sourceData.page_meta&&React.createElement('div',{style:{...cs,marginBottom:16}},
-          sl("Saúde técnica da página — dados extraídos da auditoria"),
-          React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)',gap:8,marginTop:4}},
-            [
-              {label:'Título',value:sourceData.page_meta.title,ideal:'50–60 chars',len:sourceData.page_meta.title?.length||0,min:50,max:60},
-              {label:'Meta description',value:sourceData.page_meta.meta_description,ideal:'120–160 chars',len:sourceData.page_meta.meta_description?.length||0,min:120,max:160},
-            ].map((m,i)=>{
-              const ok=m.len>=m.min&&m.len<=m.max;
-              const warn=m.len>0&&!ok;
-              return React.createElement('div',{key:i,style:{background:ok?C.greenBg:warn?C.amberBg:C.redBg,border:`1px solid ${ok?C.green+'30':warn?C.amber+'30':C.red+'25'}`,borderRadius:10,padding:'10px 12px'}},
-                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:ok?C.green:warn?C.amber:C.red,fontWeight:700,marginBottom:5}},m.label),
-                React.createElement('div',{style:{fontSize:11,color:C.text1,lineHeight:1.4,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}},m.len>0?'"'+m.value.slice(0,40)+(m.value.length>40?'…':'')+'"':'— não encontrado'),
-                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
-                  React.createElement('span',{style:{fontSize:10,fontWeight:700,color:ok?C.green:warn?C.amber:C.red}},m.len+' chars'),
-                  React.createElement('span',{style:{fontSize:9,color:C.text3}},'ideal: '+m.ideal)
-                )
-              );
-            }).concat([
-              React.createElement('div',{key:'canonical',style:{background:sourceData.page_meta.canonical?C.greenBg:C.redBg,border:`1px solid ${sourceData.page_meta.canonical?C.green+'30':C.red+'25'}`,borderRadius:10,padding:'10px 12px'}},
-                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:sourceData.page_meta.canonical?C.green:C.red,fontWeight:700,marginBottom:5}},'Canonical'),
-                React.createElement('div',{style:{fontSize:11,color:C.text1,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},sourceData.page_meta.canonical||'— ausente'),
-                React.createElement('span',{style:{fontSize:10,fontWeight:700,color:sourceData.page_meta.canonical?C.green:C.red}},sourceData.page_meta.canonical?'✓ presente':'✗ ausente')
+          sl("Saúde técnica + prévia SERP — dados extraídos da auditoria"),
+          React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'3fr 2fr',gap:12,marginTop:8}},
+
+            /* left: metric cards */
+            React.createElement('div',null,
+              React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8,marginBottom:10}},
+                [
+                  {label:'Título',value:sourceData.page_meta.title,ideal:'50–60 chars',len:sourceData.page_meta.title?.length||0,min:50,max:60},
+                  {label:'Meta description',value:sourceData.page_meta.meta_description,ideal:'120–160 chars',len:sourceData.page_meta.meta_description?.length||0,min:120,max:160},
+                ].map((m,i)=>{
+                  const ok=m.len>=m.min&&m.len<=m.max;
+                  const warn=m.len>0&&!ok;
+                  return React.createElement('div',{key:i,style:{background:ok?C.greenBg:warn?C.amberBg:C.redBg,border:`1px solid ${ok?C.green+'30':warn?C.amber+'30':C.red+'25'}`,borderRadius:9,padding:'9px 11px'}},
+                    React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:ok?C.green:warn?C.amber:C.red,fontWeight:700,marginBottom:4}},m.label),
+                    React.createElement('div',{style:{fontSize:10,color:C.text1,lineHeight:1.4,marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.len>0?m.value.slice(0,45)+(m.value.length>45?'…':''):'— não encontrado'),
+                    React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+                      React.createElement('span',{style:{fontSize:10,fontWeight:700,color:ok?C.green:warn?C.amber:C.red}},m.len+' chars'),
+                      React.createElement('span',{style:{fontSize:9,color:C.text3}},'ideal: '+m.ideal)
+                    )
+                  );
+                })
               ),
-              React.createElement('div',{key:'tech',style:{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 12px'}},
-                React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.text3,fontWeight:700,marginBottom:5}},'Tecnologia'),
-                React.createElement('div',{style:{fontSize:12,fontWeight:700,color:C.text1,marginBottom:3}},sourceData.page_meta.framework||sourceData.page_meta.cms||'Desconhecida'),
-                React.createElement('span',{style:{fontSize:10,fontWeight:600,color:sourceData.page_meta.is_ssr?C.green:C.amber}},sourceData.page_meta.is_ssr===true?'✓ SSR (crawlable)':sourceData.page_meta.is_ssr===false?'⚠ SPA (JS-only)':'— indefinido')
+              React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8}},
+                React.createElement('div',{style:{background:sourceData.page_meta.canonical?C.greenBg:C.redBg,border:`1px solid ${sourceData.page_meta.canonical?C.green+'30':C.red+'25'}`,borderRadius:9,padding:'9px 11px'}},
+                  React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:sourceData.page_meta.canonical?C.green:C.red,fontWeight:700,marginBottom:4}},'Canonical'),
+                  React.createElement('div',{style:{fontSize:10,color:C.text1,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},sourceData.page_meta.canonical||'— ausente'),
+                  React.createElement('span',{style:{fontSize:10,fontWeight:700,color:sourceData.page_meta.canonical?C.green:C.red}},sourceData.page_meta.canonical?'✓ presente':'✗ ausente')
+                ),
+                React.createElement('div',{style:{background:C.surface,border:`1px solid ${C.border}`,borderRadius:9,padding:'9px 11px'}},
+                  React.createElement('div',{style:{fontSize:9,textTransform:'uppercase',letterSpacing:1.5,color:C.text3,fontWeight:700,marginBottom:4}},'Tecnologia'),
+                  React.createElement('div',{style:{fontSize:11,fontWeight:700,color:C.text1,marginBottom:2}},sourceData.page_meta.framework||sourceData.page_meta.cms||'Desconhecida'),
+                  React.createElement('span',{style:{fontSize:10,fontWeight:600,color:sourceData.page_meta.is_ssr===true?C.green:sourceData.page_meta.is_ssr===false?C.red:C.text3}},sourceData.page_meta.is_ssr===true?'✓ SSR — crawlable':sourceData.page_meta.is_ssr===false?'✗ SPA — JS-only':'— indefinido')
+                )
               )
-            ])
+            ),
+
+            /* right: SERP snippet preview */
+            React.createElement('div',{style:{background:'#fff',borderRadius:10,padding:'14px 16px',border:'1px solid #dadce0',position:'relative'}},
+              React.createElement('div',{style:{position:'absolute',top:6,right:8,fontSize:8,color:'#9aa0a6',letterSpacing:1,textTransform:'uppercase'}},'prévia SERP'),
+              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:4}},
+                React.createElement('div',{style:{width:16,height:16,borderRadius:'50%',background:'#4285f4',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,color:'#fff',fontWeight:700,flexShrink:0}},'G'),
+                React.createElement('span',{style:{fontSize:11,color:'#202124',letterSpacing:-.2}},
+                  (()=>{try{const u=new URL(sourceData.url||'https://hotmart.com');return u.hostname+u.pathname.replace(/\/$/,'').split('/').slice(0,2).join(' › ');}catch(e){return'hotmart.com'}})()
+                )
+              ),
+              React.createElement('div',{style:{fontSize:15,fontWeight:500,color:'#1a0dab',lineHeight:1.3,marginBottom:4,fontFamily:'arial,sans-serif',cursor:'pointer',overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}},
+                sourceData.page_meta.title||'Título não encontrado'
+              ),
+              React.createElement('div',{style:{fontSize:12,color:'#4d5156',lineHeight:1.55,fontFamily:'arial,sans-serif',overflow:'hidden',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical'}},
+                sourceData.page_meta.meta_description||'Meta description não encontrada. Sem meta description, o Google pode exibir qualquer trecho da página — geralmente subótimo.'
+              ),
+              /* length indicators */
+              React.createElement('div',{style:{marginTop:8,paddingTop:8,borderTop:'1px solid #e8eaed',display:'flex',gap:8,flexWrap:'wrap'}},
+                (()=>{
+                  const tLen=sourceData.page_meta.title?.length||0;
+                  const mLen=sourceData.page_meta.meta_description?.length||0;
+                  const tOk=tLen>=50&&tLen<=60;
+                  const mOk=mLen>=120&&mLen<=160;
+                  return[
+                    React.createElement('span',{key:'t',style:{fontSize:10,color:tOk?'#137333':tLen>0?'#b06000':'#c5221f',fontWeight:600}},'Título: '+tLen+(tOk?' ✓':(tLen<50?' ↑ curto':' ↓ longo'))),
+                    React.createElement('span',{key:'m',style:{fontSize:10,color:mOk?'#137333':mLen>0?'#b06000':'#c5221f',fontWeight:600}},'Meta: '+mLen+(mOk?' ✓':(mLen<120?' ↑ curto':' ↓ longo'))),
+                  ];
+                })()
+              )
+            )
+          )
+        ),
+
+        /* ── Content Rewrite Queue ── */
+        rewriteQueue.length>0&&React.createElement('div',{style:{...cs,marginBottom:16}},
+          sl("Fila de reescrita — blocos C/D/F por potencial de melhoria"),
+          React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Reescreva estes blocos para ganhar citabilidade. Faixa ideal: 134–167 palavras + estrutura de resposta direta.'),
+          React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:4}},
+            rewriteQueue.map((b,i)=>{
+              const gc=GRADE_C[b.grade]||C.text3;
+              const cpKey='rw'+i;
+              const wordTarget=b.words<100?'Expandir para 134–167 palavras':b.words>200?'Dividir em blocos de 134–167 palavras':'Reformular como resposta direta (atual: '+b.words+' pal.)';
+              const wordDelta=b.words<134?('+'+(134-b.words)+' pal. mínimas'):b.words>167?('-'+(b.words-167)+' pal. máximas'):'na faixa';
+              return React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:8,background:C.surface,border:`1px solid ${gc}18`,borderLeft:`3px solid ${gc}`}},
+                React.createElement('div',{style:{width:28,height:28,borderRadius:6,background:gc+'18',border:`1px solid ${gc}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:gc,flexShrink:0,fontFamily:'monospace'}},b.grade),
+                React.createElement('div',{style:{flex:1,minWidth:0}},
+                  React.createElement('div',{style:{fontSize:12,fontWeight:600,color:C.text1,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},b.heading||'Bloco sem título'),
+                  React.createElement('div',{style:{fontSize:10,color:C.text3}},wordTarget,' · ',React.createElement('span',{style:{color:gc,fontWeight:600}},wordDelta),' · score: '+b.score+'/100')
+                ),
+                !isMobile&&React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center',flexShrink:0}},
+                  React.createElement('span',{style:{fontSize:10,color:C.text3,fontFamily:'monospace',background:C.card,padding:'2px 7px',borderRadius:4,border:`1px solid ${C.border}`}},b.words+' pal.'),
+                  React.createElement('span',{style:{fontSize:10,color:C.amber,padding:'2px 7px',borderRadius:4,background:C.amberBg}},'→ 134–167')
+                ),
+                React.createElement('button',{
+                  onClick:()=>{navigator.clipboard?.writeText((b.heading||'')+'\\n'+wordTarget);setCopiedFoco(cpKey);setTimeout(()=>setCopiedFoco(null),2000);},
+                  style:{background:'none',border:`1px solid ${C.border}`,color:copiedFoco===cpKey?C.green:C.text3,fontSize:9,padding:'4px 8px',borderRadius:5,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,transition:'all .2s'}
+                },copiedFoco===cpKey?'✓ ok':'⎘')
+              );
+            })
           )
         ),
 
