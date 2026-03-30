@@ -611,3 +611,187 @@ def calcular_potencial_pontos(dominio: str = "hotmart.com") -> dict:
     except Exception as e:
         logger.exception("calcular_potencial_pontos")
         return {"status": "error", "message": str(e)}
+
+
+def analisar_seo_tecnico(dominio: str = "hotmart.com") -> dict:
+    """
+    Análise técnica SEO detalhada: schema markup, E-E-A-T, metadados de página,
+    tecnologia (SSR/SPA/framework), canonical, meta description e findings técnicos.
+
+    Use quando o usuário perguntar sobre: schema JSON-LD, tipos de schema presentes
+    ou faltando, SSR vs SPA, canonical URL, meta description, stack tecnológico,
+    score E-E-A-T, fundamentos técnicos de SEO ou dados estruturados.
+
+    Args:
+        dominio: Domínio a consultar. Default: "hotmart.com".
+
+    Returns:
+        dict com score técnico, score schema, score E-E-A-T, schema types encontrados,
+        recomendações de schema, metadados da página e findings técnicos prioritários.
+    """
+    try:
+        data = _latest_raw(dominio)
+        if not data:
+            return {"status": "sem_dados", "message": f"Nenhuma auditoria para '{dominio}'."}
+
+        scores = data.get("scores", {})
+        schema_data = data.get("schema", {})
+        page_data = data.get("page", {})
+        findings = data.get("findings", [])
+
+        tech_findings = [
+            {
+                "severidade": f.get("severity", f.get("sev")),
+                "titulo": f.get("title"),
+                "descricao": f.get("description", f.get("desc")),
+                "acao": f.get("fix"),
+                "esforco": f.get("effort"),
+                "impacto_pts": f.get("impact_pts", 0),
+            }
+            for f in findings
+            if any(kw in (f.get("title", "") + f.get("description", "") + f.get("fix", "")).lower()
+                   for kw in ["schema", "json-ld", "structured", "canonical", "meta", "ssr", "technical", "e-e-a-t", "eeat"])
+        ]
+
+        schema_types = schema_data.get("types_found", [])
+        schema_recommended = schema_data.get("recommended", [])
+        missing_priority = [r for r in schema_recommended if r.get("priority") == "high"]
+
+        score_tech = scores.get("technical", {})
+        score_schema = scores.get("schema", {})
+        score_eeat = scores.get("content_eeat", {})
+
+        tech = page_data.get("technology", {})
+
+        return {
+            "status": "success",
+            "dominio": dominio,
+            "scores": {
+                "technical": score_tech.get("value") if isinstance(score_tech, dict) else int(score_tech or 0),
+                "schema": score_schema.get("value") if isinstance(score_schema, dict) else int(score_schema or 0),
+                "content_eeat": score_eeat.get("value") if isinstance(score_eeat, dict) else int(score_eeat or 0),
+            },
+            "pagina": {
+                "titulo": page_data.get("title"),
+                "meta_description": page_data.get("meta_description"),
+                "canonical": page_data.get("canonical"),
+                "status_code": page_data.get("status_code"),
+            },
+            "tecnologia": {
+                "is_ssr": tech.get("is_ssr"),
+                "is_spa": tech.get("is_spa"),
+                "framework": tech.get("framework"),
+                "cms": tech.get("cms"),
+                "has_service_worker": tech.get("has_service_worker"),
+            },
+            "schema": {
+                "types_encontrados": schema_types,
+                "total_types": len(schema_types),
+                "cobertura_pct": schema_data.get("coverage_pct"),
+                "tem_organization": schema_data.get("has_organization"),
+                "tem_faq": schema_data.get("has_faq"),
+                "tem_product": schema_data.get("has_product"),
+                "tem_article": schema_data.get("has_article"),
+                "same_as_urls": schema_data.get("same_as_urls", []),
+                "schemas_prioritarios_faltando": [r.get("type") for r in missing_priority],
+                "recomendacoes_schema": [
+                    {"tipo": r.get("type"), "razao": r.get("reason"), "prioridade": r.get("priority")}
+                    for r in schema_recommended[:5]
+                ],
+            },
+            "findings_tecnicos": tech_findings[:8],
+            "total_findings_tecnicos": len(tech_findings),
+        }
+
+    except Exception as e:
+        logger.exception("analisar_seo_tecnico")
+        return {"status": "error", "message": str(e)}
+
+
+def analisar_oportunidades_conteudo(dominio: str = "hotmart.com") -> dict:
+    """
+    Analisa oportunidades de melhoria nos blocos de conteúdo para GEO e SEO.
+    Identifica: blocos fora da faixa ideal (134-167 palavras), baixo Answer Quality,
+    baixo Self-Containment, e calcula o potencial de melhoria por ajuste de conteúdo.
+
+    Use quando o usuário perguntar: quais páginas/seções precisam reescrever conteúdo,
+    como melhorar o score de citabilidade, quais blocos têm mais potencial de melhoria,
+    estratégia de otimização de conteúdo para IA, ou análise do tab SEO do dashboard.
+
+    Args:
+        dominio: Domínio a consultar. Default: "hotmart.com".
+
+    Returns:
+        dict com oportunidades agrupadas por tipo de problema, blocos prioritários
+        para edição, e impacto estimado de cada intervenção.
+    """
+    try:
+        data = _latest_raw(dominio)
+        if not data:
+            return {"status": "sem_dados", "message": f"Nenhuma auditoria para '{dominio}'."}
+
+        cit = data.get("citability", {})
+        all_blocks = cit.get("all_blocks") or cit.get("top_blocks") or []
+
+        if not all_blocks:
+            return {"status": "sem_dados", "message": "Nenhum bloco de conteúdo analisado."}
+
+        def _metrics(b: dict) -> dict:
+            bd = b.get("breakdown") or {}
+            return {
+                "titulo": b.get("heading"),
+                "score": b.get("total_score"),
+                "grade": b.get("grade"),
+                "palavras": b.get("word_count"),
+                "faixa_ideal": 134 <= b.get("word_count", 0) <= 167,
+                "answer_quality": round(bd.get("answer_block_quality", 0) * 3.33) if bd else None,
+                "self_contain": round(bd.get("self_containment", 0) * 4) if bd else None,
+                "stat_density": round(bd.get("statistical_density", 0) * 6.67) if bd else None,
+                "url": b.get("source_url"),
+            }
+
+        muito_curtos   = [_metrics(b) for b in all_blocks if b.get("word_count", 0) < 100]
+        muito_longos   = [_metrics(b) for b in all_blocks if b.get("word_count", 0) > 200]
+        baixo_aq       = [_metrics(b) for b in all_blocks if b.get("total_score", 100) < 50
+                          and b.get("breakdown", {}).get("answer_block_quality", 100) < 15]
+        baixo_sc       = [_metrics(b) for b in all_blocks if b.get("total_score", 100) < 50
+                          and b.get("breakdown", {}).get("self_containment", 100) < 15]
+        grade_d_ou_f   = [_metrics(b) for b in all_blocks if b.get("grade") in ("D", "F")]
+
+        potencial_ajuste = min(100, sum(
+            max(0, 75 - b.get("total_score", 0))
+            for b in all_blocks if b.get("word_count", 0) < 100 or b.get("word_count", 0) > 200
+        ) // max(1, len(all_blocks)))
+
+        return {
+            "status": "success",
+            "dominio": dominio,
+            "total_blocos": len(all_blocks),
+            "score_medio": cit.get("average_score"),
+            "resumo_problemas": {
+                "muito_curtos_abaixo_100": len(muito_curtos),
+                "muito_longos_acima_200": len(muito_longos),
+                "baixo_answer_quality": len(baixo_aq),
+                "baixo_self_containment": len(baixo_sc),
+                "grade_d_ou_f": len(grade_d_ou_f),
+            },
+            "acao_recomendada": {
+                "muito_curtos": "Expandir para 134-167 palavras com dados concretos, exemplos e estatísticas",
+                "muito_longos": "Dividir em blocos menores focados em uma única resposta/pergunta",
+                "baixo_answer_quality": "Reformular como resposta direta: começar com a resposta, depois o contexto",
+                "baixo_self_containment": "Tornar o bloco autocontido: adicionar contexto suficiente para ser lido isoladamente",
+                "grade_d_ou_f": "Priorizar reescrita completa — estes blocos são ignorados por LLMs",
+            },
+            "potencial_melhoria_pts": potencial_ajuste,
+            "top_oportunidades": sorted(
+                [_metrics(b) for b in all_blocks if b.get("grade") in ("C", "D", "F")],
+                key=lambda x: x.get("score") or 0
+            )[:8],
+            "blocos_muito_curtos": muito_curtos[:5],
+            "blocos_muito_longos": muito_longos[:5],
+            "blocos_grade_d_f": grade_d_ou_f[:5],
+        }
+
+    except Exception as e:
+        logger.exception("analisar_oportunidades_conteudo")
+        return {"status": "error", "message": str(e)}

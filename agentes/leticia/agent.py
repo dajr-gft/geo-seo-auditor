@@ -35,14 +35,16 @@ root_agent = Agent(
     instruction=INSTRUCTION,
 
     tools=[
-        tools.buscar_ultima_auditoria,    # score geral e por categoria
-        tools.buscar_historico_scores,    # tendência ao longo do tempo
-        tools.analisar_citabilidade,      # blocos A–F, Answer Quality, faixa ideal
-        tools.analisar_plataformas_ia,    # ChatGPT vs Perplexity vs Gemini vs ...
-        tools.listar_findings,            # problemas priorizados por severidade
-        tools.listar_quick_wins,          # ações ordenadas por ROI
-        tools.verificar_crawlers_ia,      # robots.txt e llms.txt
-        tools.calcular_potencial_pontos,  # business case e score projetado
+        tools.buscar_ultima_auditoria,        # score geral e por categoria
+        tools.buscar_historico_scores,        # tendência ao longo do tempo
+        tools.analisar_citabilidade,          # blocos A–F, Answer Quality, faixa ideal
+        tools.analisar_plataformas_ia,        # ChatGPT vs Perplexity vs Gemini vs ...
+        tools.listar_findings,                # problemas priorizados por severidade
+        tools.listar_quick_wins,              # ações ordenadas por ROI
+        tools.verificar_crawlers_ia,          # robots.txt e llms.txt
+        tools.calcular_potencial_pontos,      # business case e score projetado
+        tools.analisar_seo_tecnico,           # schema, E-E-A-T, metadados, tecnologia
+        tools.analisar_oportunidades_conteudo, # blocos para reescrever, faixa ideal, ação
     ],
 
     generate_content_config=types.GenerateContentConfig(

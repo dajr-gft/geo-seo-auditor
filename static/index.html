@@ -33,7 +33,7 @@ body{background:#08090d;color:#e8ecf4;font-family:'Segoe UI',system-ui,sans-seri
 <div id="root"></div>
 <script>
 const {useState,useEffect,useRef,useMemo,useCallback}=React;
-const {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Cell,RadarChart,PolarGrid,PolarAngleAxis,PolarRadiusAxis,Radar,AreaChart,Area,CartesianGrid,Legend,ComposedChart,PieChart,Pie,Sector,ReferenceLine,ReferenceArea}=Recharts;
+const {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Cell,RadarChart,PolarGrid,PolarAngleAxis,PolarRadiusAxis,Radar,AreaChart,Area,CartesianGrid,Legend,ComposedChart,PieChart,Pie,Sector,ReferenceLine,ReferenceArea,ScatterChart,Scatter,ZAxis}=Recharts;
 
 /* ═══ DEFAULT HOTMART DATA ═══ */
 const DEFAULT_DATA={
@@ -210,6 +210,7 @@ const TABS=[
   {id:"overview",icon:"◎",label:"Overview"},{id:"platforms",icon:"◈",label:"Plataformas"},
   {id:"citability",icon:"◇",label:"Citabilidade"},{id:"crawlers",icon:"◆",label:"Crawlers"},
   {id:"findings",icon:"▲",label:"Findings"},{id:"roadmap",icon:"→",label:"Roadmap"},
+  {id:"seo",icon:"⬡",label:"SEO"},
   {id:"ia",icon:"✦",label:"IA"},
 ];
 
@@ -431,6 +432,48 @@ function App(){
   const gradeData=useMemo(()=>{const c2={A:C.green,B:C.blue,C:C.amber,D:"#f97316",F:C.red};return Object.entries(sourceData.grades).map(([g,v])=>({name:g,value:v,fill:c2[g]}))},[sourceData.grades]);
   const impactData=useMemo(()=>{let cum=sourceData.geo_score;return sourceData.quick_wins.map(w=>{cum+=w.pts;return{...w,cumulative:cum}})},[sourceData]);
   const radarData=useMemo(()=>categoryData.map(c=>({subject:c.label+' ('+c.weight+'%)',current:c.value,previous:c.prev||0,max:100})),[categoryData]);
+
+  // ── SEO tab derived data ──
+  const EFF_H={"15 minutos":0.25,"30min":0.5,"30 min":0.5,"30 minutos":0.5,"1h":1,"1 hora":1,"2h":2,"2 horas":2,"1d":8,"1 dia":8,"2-3 dias":20,"3 dias":24,"3d":24,"1 semana":40,"1w":40,"2 semanas":80};
+  const GRADE_C={A:C.green,B:C.blue,C:C.amber,D:"#f97316",F:C.red};
+  const CAT_C={crawlers:C.blue,llmstxt:C.purple,schema:C.accent,eeat:C.amber,citability:C.green,brand:"#f97316"};
+
+  const seoGapData=useMemo(()=>
+    categoryData
+      .map(c=>({...c,gap:Math.max(0,80-c.value),priority:Math.round(c.weight*(80-c.value)/100)}))
+      .sort((a,b)=>b.priority-a.priority)
+  ,[categoryData]);
+
+  const scatterBlocks=useMemo(()=>
+    sourceData.citability_blocks.map((b,i)=>({
+      x:Math.min(350,b.words||0), y:b.score||0,
+      grade:b.grade, name:b.heading, words:b.words, score:b.score,
+      fill:GRADE_C[b.grade]||C.text3, idx:i
+    }))
+  ,[sourceData.citability_blocks]);
+
+  const actionMatrix=useMemo(()=>
+    sourceData.quick_wins.map(w=>({
+      x:Math.min(40,EFF_H[w.effort]||8), y:w.pts,
+      action:w.action, category:w.category, effort:w.effort,
+      fill:CAT_C[w.category]||C.text3,
+      roi:Math.round(w.pts/(EFF_H[w.effort]||8)*10)/10,
+    }))
+  ,[sourceData.quick_wins]);
+
+  const BRAND_PLATFORMS=[
+    {name:"YouTube",corr:0.737,icon:"▶",color:"#ff0000",desc:"Maior correlação com citações de IA"},
+    {name:"Reddit",corr:0.580,icon:"◉",color:"#ff4500",desc:"Menções e discussões orgânicas"},
+    {name:"Wikipedia",corr:0.520,icon:"W",color:"#a7b0ba",desc:"Fonte primária consultada por LLMs"},
+    {name:"Wikidata",corr:0.480,icon:"❋",color:"#339966",desc:"Dados estruturados para IA"},
+    {name:"LinkedIn",corr:0.410,icon:"in",color:"#0077b5",desc:"Autoridade profissional e corporativa"},
+  ];
+
+  const topFindings=useMemo(()=>
+    [...sourceData.findings]
+      .sort((a,b)=>(b.impact_pts||0)-(a.impact_pts||0))
+      .slice(0,8)
+  ,[sourceData.findings]);
 
   if(!hasRealData){
     return React.createElement('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px',background:C.bg}},
@@ -1008,6 +1051,184 @@ function App(){
           ),
           React.createElement('div',{style:{marginTop:14,fontSize:12,color:C.text2,lineHeight:1.7}},
             'Com os ',data.quick_wins.length,' quick wins, gap reduz de ',D.gap,' para ',data.top_competitor.score-D.proj,' pontos.'
+          )
+        )
+      ),
+
+      /* ── SEO TAB ── */
+      tab==="seo"&&React.createElement('div',{className:'fade-up'},
+
+        /* ── Row 1: Score Gap Priority ── */
+        React.createElement('div',{style:{...cs,marginBottom:16}},
+          sl("Prioridade de otimização — gap × peso"),
+          React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Categorias ordenadas pelo impacto ponderado no GEO Score (gap até 80 × peso da categoria)'),
+          React.createElement(ResponsiveContainer,{width:'100%',height:isMobile?280:220},
+            React.createElement(BarChart,{data:seoGapData,layout:'vertical',margin:{top:0,right:isMobile?8:60,left:isMobile?90:130,bottom:0}},
+              React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border,horizontal:false}),
+              React.createElement(XAxis,{type:'number',domain:[0,100],tick:{fill:C.text3,fontSize:10},axisLine:{stroke:C.border}}),
+              React.createElement(YAxis,{type:'category',dataKey:'label',tick:{fill:C.text2,fontSize:isMobile?10:11},width:isMobile?88:128}),
+              React.createElement(Tooltip,{content:({active,payload})=>{
+                if(!active||!payload?.length)return null;
+                const d=payload[0].payload;
+                return React.createElement('div',{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 14px',fontSize:12}},
+                  React.createElement('div',{style:{fontWeight:700,marginBottom:6}},d.label,' (',d.weight,'%)'),
+                  React.createElement('div',{style:{color:tier(d.value).c}},'Score atual: ',d.value,'/100'),
+                  React.createElement('div',{style:{color:C.text3}},'Gap até 80: ',d.gap,' pts'),
+                  React.createElement('div',{style:{color:C.amber}},'Prioridade: ',d.priority,' pts ponderados')
+                );
+              }}),
+              React.createElement(Bar,{dataKey:'value',radius:[0,6,6,0],maxBarSize:28},
+                seoGapData.map((d,i)=>React.createElement(Cell,{key:i,fill:tier(d.value).c}))
+              ),
+              React.createElement(ReferenceLine,{x:80,stroke:C.green,strokeDasharray:'6 4',strokeWidth:1.5,label:{value:'Meta 80',fill:C.green,fontSize:10,position:'insideTopRight'}})
+            )
+          ),
+          React.createElement('div',{style:{display:'grid',gridTemplateColumns:`repeat(${isMobile?2:3},1fr)`,gap:8,marginTop:14}},
+            seoGapData.slice(0,isMobile?4:6).map((d,i)=>React.createElement('div',{key:i,style:{background:C.surface,borderRadius:8,padding:'10px 12px',border:`1px solid ${tier(d.value).c}20`,borderLeft:`3px solid ${tier(d.value).c}`}},
+              React.createElement('div',{style:{fontSize:10,color:C.text3,marginBottom:3}},d.label),
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                React.createElement('span',{style:{fontSize:18,fontWeight:800,color:tier(d.value).c,fontFamily:'monospace'}},d.value),
+                d.gap>0&&React.createElement('span',{style:{fontSize:10,color:C.amber,background:C.amberBg,padding:'2px 6px',borderRadius:5,fontWeight:600}},'-'+d.gap)
+              )
+            ))
+          )
+        ),
+
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:16}},
+
+          /* ── Content Scatter ── */
+          React.createElement('div',{style:{...cs,margin:0}},
+            sl("Blocos de conteúdo — palavras × score"),
+            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Zona ideal: 134–167 palavras e score ≥ 65 (grade B). Pontos fora desta zona são oportunidades.'),
+            React.createElement(ResponsiveContainer,{width:'100%',height:240},
+              React.createElement(ScatterChart,{margin:{top:8,right:8,bottom:20,left:0}},
+                React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border}),
+                React.createElement(XAxis,{type:'number',dataKey:'x',name:'Palavras',domain:[0,350],tick:{fill:C.text3,fontSize:10},label:{value:'Palavras',position:'insideBottom',offset:-10,fill:C.text3,fontSize:10}}),
+                React.createElement(YAxis,{type:'number',dataKey:'y',name:'Score',domain:[0,100],tick:{fill:C.text3,fontSize:10}}),
+                React.createElement(ZAxis,{range:[40,80]}),
+                React.createElement(Tooltip,{cursor:{stroke:C.border},content:({active,payload})=>{
+                  if(!active||!payload?.length)return null;
+                  const d=payload[0].payload;
+                  return React.createElement('div',{style:{background:C.card,border:`1px solid ${GRADE_C[d.grade]||C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,maxWidth:200}},
+                    React.createElement('div',{style:{fontWeight:600,marginBottom:4,fontSize:11,color:GRADE_C[d.grade]}},d.name?.slice(0,40)),
+                    React.createElement('div',null,'Score: ',React.createElement('b',{style:{color:GRADE_C[d.grade]}},d.score),' | Grade: ',d.grade),
+                    React.createElement('div',{style:{color:C.text3}},d.words,' palavras',d.words>=134&&d.words<=167?' ✓ ideal':'')
+                  );
+                }}),
+                React.createElement(ReferenceArea,{x1:134,x2:167,y1:65,y2:100,fill:C.green,fillOpacity:0.06,stroke:C.green,strokeOpacity:.3,strokeDasharray:'4 4'}),
+                React.createElement(ReferenceLine,{x:134,stroke:C.green,strokeOpacity:.4,strokeDasharray:'3 3'}),
+                React.createElement(ReferenceLine,{x:167,stroke:C.green,strokeOpacity:.4,strokeDasharray:'3 3'}),
+                React.createElement(ReferenceLine,{y:65,stroke:C.blue,strokeOpacity:.4,strokeDasharray:'3 3'}),
+                React.createElement(Scatter,{data:scatterBlocks,isAnimationActive:true},
+                  scatterBlocks.map((d,i)=>React.createElement(Cell,{key:i,fill:d.fill,fillOpacity:.85}))
+                )
+              )
+            ),
+            React.createElement('div',{style:{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}},
+              Object.entries(GRADE_C).map(([g,col])=>React.createElement('div',{key:g,style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}},
+                React.createElement('span',{style:{width:10,height:10,borderRadius:'50%',background:col,display:'inline-block'}}),
+                'Grade ',g
+              )),
+              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.green}},
+                React.createElement('span',{style:{width:10,height:10,borderRadius:2,background:C.green,opacity:.3,display:'inline-block'}}),
+                'Zona ideal'
+              )
+            )
+          ),
+
+          /* ── Action Quadrant ── */
+          React.createElement('div',{style:{...cs,margin:0}},
+            sl("Matriz esforço × impacto — quick wins"),
+            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:10}},'Superior esquerdo = máxima prioridade. Clique para ver detalhes.'),
+            React.createElement(ResponsiveContainer,{width:'100%',height:240},
+              React.createElement(ScatterChart,{margin:{top:8,right:8,bottom:20,left:0}},
+                React.createElement(CartesianGrid,{strokeDasharray:'3 3',stroke:C.border}),
+                React.createElement(XAxis,{type:'number',dataKey:'x',name:'Esforço (h)',domain:[0,42],tick:{fill:C.text3,fontSize:10},ticks:[0.5,1,2,8,24,40],tickFormatter:v=>v<=1?v+'h':v<=8?v+'h':v+'h',label:{value:'Esforço →',position:'insideBottom',offset:-10,fill:C.text3,fontSize:10}}),
+                React.createElement(YAxis,{type:'number',dataKey:'y',name:'Impacto (pts)',domain:[0,20],tick:{fill:C.text3,fontSize:10},label:{value:'↑ Impacto',angle:-90,position:'insideLeft',fill:C.text3,fontSize:10}}),
+                React.createElement(ZAxis,{range:[50,100]}),
+                React.createElement(Tooltip,{cursor:{stroke:C.border},content:({active,payload})=>{
+                  if(!active||!payload?.length)return null;
+                  const d=payload[0].payload;
+                  return React.createElement('div',{style:{background:C.card,border:`1px solid ${d.fill}`,borderRadius:8,padding:'8px 12px',fontSize:12,maxWidth:220}},
+                    React.createElement('div',{style:{fontWeight:600,marginBottom:4,fontSize:11}},d.action?.slice(0,50)),
+                    React.createElement('div',{style:{color:d.fill}},d.category),
+                    React.createElement('div',null,'+',d.y,' pts · ',d.effort,' · ROI ',d.roi,'×')
+                  );
+                }}),
+                React.createElement(ReferenceArea,{x1:0,x2:8,y1:8,y2:20,fill:C.green,fillOpacity:0.06}),
+                React.createElement(ReferenceLine,{x:8,stroke:C.border,strokeDasharray:'4 4'}),
+                React.createElement(ReferenceLine,{y:8,stroke:C.border,strokeDasharray:'4 4'}),
+                React.createElement(Scatter,{data:actionMatrix,isAnimationActive:true},
+                  actionMatrix.map((d,i)=>React.createElement(Cell,{key:i,fill:d.fill}))
+                )
+              )
+            ),
+            React.createElement('div',{style:{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}},
+              Object.entries(CAT_C).map(([cat,col])=>React.createElement('div',{key:cat,style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}},
+                React.createElement('span',{style:{width:10,height:10,borderRadius:'50%',background:col,display:'inline-block'}}),
+                cat
+              )),
+              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.green}},
+                React.createElement('span',{style:{width:10,height:10,borderRadius:2,background:C.green,opacity:.3,display:'inline-block'}}),
+                'Priorizar'
+              )
+            )
+          )
+        ),
+
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:isMobile?'1fr':'5fr 4fr',gap:16,marginBottom:16}},
+
+          /* ── High-Impact Findings ── */
+          React.createElement('div',{style:{...cs,margin:0}},
+            sl("Findings por impacto no GEO Score"),
+            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+              topFindings.map((f,i)=>{
+                const sc=SEV[f.sev]||{c:C.text3,bg:C.surface,border:C.border,label:(f.sev||'').toUpperCase()};
+                return React.createElement('div',{key:i,style:{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,transition:'all .2s'}},
+                  React.createElement('div',{style:{width:36,height:36,borderRadius:8,background:sc.bg,border:`1px solid ${sc.border}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}},
+                    React.createElement('span',{style:{fontSize:11,fontWeight:700,color:sc.c}},'+'+(f.impact_pts||0))
+                  ),
+                  React.createElement('div',{style:{flex:1,minWidth:0}},
+                    React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:3}},
+                      React.createElement('span',{style:{fontSize:12,fontWeight:600}},f.title||f.desc?.slice(0,50)),
+                      React.createElement('span',{style:{fontSize:9,fontWeight:700,letterSpacing:1,color:sc.c,background:sc.bg,padding:'1px 6px',borderRadius:4}},sc.label)
+                    ),
+                    React.createElement('div',{style:{fontSize:11,color:C.text3}},f.fix||f.desc)
+                  ),
+                  React.createElement('div',{style:{fontSize:10,color:C.text3,flexShrink:0,whiteSpace:'nowrap',marginTop:2}},f.effort)
+                );
+              })
+            )
+          ),
+
+          /* ── Brand Authority ── */
+          React.createElement('div',{style:{...cs,margin:0}},
+            sl("Brand authority — correlação com citações IA"),
+            React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:12}},'Score de correlação com citações por LLMs (Fishkin, 2024). Clique para verificar.'),
+            React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+              BRAND_PLATFORMS.map((p,i)=>{
+                const corr=Math.round(p.corr*100);
+                const searchQ=encodeURIComponent(data.brand||'Hotmart');
+                const urls={YouTube:`https://www.youtube.com/results?search_query=${searchQ}`,Reddit:`https://www.reddit.com/search/?q=${searchQ}`,Wikipedia:`https://en.wikipedia.org/wiki/Special:Search?search=${searchQ}`,Wikidata:`https://www.wikidata.org/w/index.php?search=${searchQ}`,LinkedIn:`https://www.linkedin.com/search/results/companies/?keywords=${searchQ}`};
+                return React.createElement('a',{key:i,href:urls[p.name],target:'_blank',rel:'noopener',style:{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,textDecoration:'none',color:C.text1,transition:'all .2s',cursor:'pointer'}},
+                  React.createElement('div',{style:{width:32,height:32,borderRadius:8,background:p.color+'18',border:`1px solid ${p.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:p.color,flexShrink:0}},p.icon),
+                  React.createElement('div',{style:{flex:1}},
+                    React.createElement('div',{style:{fontSize:12,fontWeight:600}},p.name),
+                    React.createElement('div',{style:{fontSize:10,color:C.text3,marginTop:1}},p.desc)
+                  ),
+                  React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0}},
+                    React.createElement('div',{style:{fontSize:13,fontWeight:700,color:p.color,fontFamily:'monospace'}},corr+'%'),
+                    React.createElement('div',{style:{width:50,height:3,background:C.border,borderRadius:2}},
+                      React.createElement('div',{style:{width:corr+'%',height:'100%',background:p.color,borderRadius:2}})
+                    )
+                  )
+                );
+              })
+            ),
+            React.createElement('div',{style:{marginTop:12,padding:'10px 12px',borderRadius:8,background:C.amberBg,border:`1px solid ${C.amber}20`}},
+              React.createElement('div',{style:{fontSize:11,color:C.amber,fontWeight:600,marginBottom:3}},'Score Brand Authority: '+scores.brand_authority?.value+'/100'),
+              React.createElement('div',{style:{fontSize:10,color:C.text3}},'Presença ativa nestas plataformas é o fator de maior correlação com visibilidade em IA.')
+            )
           )
         )
       ),
