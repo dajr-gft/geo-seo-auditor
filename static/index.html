@@ -10,13 +10,23 @@
 <script src="/static/vendor/Recharts.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#08090d;color:#e8ecf4;font-family:'Segoe UI',system-ui,sans-serif}
+body{background:#08090d;color:#e8ecf4;font-family:'Segoe UI',system-ui,sans-serif;-webkit-text-size-adjust:100%}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
 .fade-up{animation:fadeUp .5s ease both}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#11131a}
 ::-webkit-scrollbar-thumb{background:#2a2e3d;border-radius:3px}
+/* Mobile */
+@media(max-width:640px){
+  ::-webkit-scrollbar{width:3px;height:3px}
+  .chat-chips{flex-wrap:nowrap!important;overflow-x:auto!important;padding-bottom:4px}
+  .chat-chips::-webkit-scrollbar{display:none}
+  .chat-input textarea{font-size:16px!important} /* prevent iOS zoom */
+  .tab-bar button{padding:8px 10px!important;font-size:11px!important}
+  .hdr-url{display:none!important}
+}
 </style>
 </head>
 <body>
@@ -200,12 +210,75 @@ const TABS=[
   {id:"overview",icon:"◎",label:"Overview"},{id:"platforms",icon:"◈",label:"Plataformas"},
   {id:"citability",icon:"◇",label:"Citabilidade"},{id:"crawlers",icon:"◆",label:"Crawlers"},
   {id:"findings",icon:"▲",label:"Findings"},{id:"roadmap",icon:"→",label:"Roadmap"},
+  {id:"ia",icon:"✦",label:"IA"},
 ];
+
+/* ─── Markdown renderer (bold, italic, code, links, lists, headings, tables, codeblocks) ─── */
+const _mdInline=s=>{
+  if(!s)return'';
+  const parts=[];let last=0;
+  const re=/(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+  let m;
+  while((m=re.exec(s))!==null){
+    if(m.index>last)parts.push(s.slice(last,m.index));
+    const k='i'+m.index;
+    if(m[2])parts.push(React.createElement('strong',{key:k},m[2]));
+    else if(m[3])parts.push(React.createElement('em',{key:k},m[3]));
+    else if(m[4])parts.push(React.createElement('code',{key:k,style:{background:'rgba(255,255,255,.09)',borderRadius:4,padding:'1px 6px',fontSize:'0.87em',fontFamily:'monospace',color:'#c9d1d9'}},m[4]));
+    else if(m[5])parts.push(React.createElement('a',{key:k,href:m[6],target:'_blank',rel:'noopener',style:{color:'#4a9eff',textDecoration:'underline',textDecorationColor:'#4a9eff40'}},m[5]));
+    last=m.index+m[0].length;
+  }
+  if(last<s.length)parts.push(s.slice(last));
+  return parts.length?parts:s;
+};
+function parseMd(text){
+  if(!text)return null;
+  const elems=[];
+  const lines=text.split('\n');
+  let j=0;
+  while(j<lines.length){
+    const line=lines[j];
+    // Heading
+    const hm=line.match(/^(#{1,3})\s+(.+)/);
+    if(hm){const sz=[17,14,13][hm[1].length-1];elems.push(React.createElement('div',{key:'h'+j,style:{fontWeight:700,fontSize:sz,marginTop:j===0?0:10,marginBottom:4,color:'#e8ecf4',borderBottom:hm[1].length===1?'1px solid rgba(255,255,255,.08)':'none',paddingBottom:hm[1].length===1?6:0}},_mdInline(hm[2])));j++;continue;}
+    // Code block
+    if(line.startsWith('```')){j++;const cl=[];while(j<lines.length&&!lines[j].startsWith('```')){cl.push(lines[j]);j++;}j++;elems.push(React.createElement('pre',{key:'cb'+j,style:{background:'#0d1117',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'10px 14px',fontSize:11,fontFamily:'monospace',overflowX:'auto',margin:'6px 0',color:'#c9d1d9',lineHeight:1.55,whiteSpace:'pre'}},cl.join('\n')));continue;}
+    // Table
+    if(line.includes('|')&&j+1<lines.length&&lines[j+1].match(/^\|[\s\-|:]+\|/)){
+      const hdrs=line.split('|').filter(c=>c.trim()).map(c=>c.trim());
+      j+=2;
+      const rows=[];
+      while(j<lines.length&&lines[j].includes('|')){rows.push(lines[j].split('|').filter(c=>c.trim()).map(c=>c.trim()));j++;}
+      elems.push(React.createElement('div',{key:'tbl'+j,style:{overflowX:'auto',margin:'8px 0',borderRadius:8,border:'1px solid rgba(255,255,255,.1)'}},
+        React.createElement('table',{style:{borderCollapse:'collapse',width:'100%',fontSize:12}},
+          React.createElement('thead',null,React.createElement('tr',null,hdrs.map((h,hi)=>React.createElement('th',{key:hi,style:{padding:'7px 12px',textAlign:'left',background:'rgba(255,255,255,.05)',borderBottom:'1px solid rgba(255,255,255,.1)',color:'#a0aec0',fontWeight:600,whiteSpace:'nowrap'}},_mdInline(h))))),
+          React.createElement('tbody',null,rows.map((row,ri)=>React.createElement('tr',{key:ri,style:{background:ri%2===0?'transparent':'rgba(255,255,255,.02)'}},row.map((cell,ci)=>React.createElement('td',{key:ci,style:{padding:'6px 12px',borderBottom:'1px solid rgba(255,255,255,.05)',color:'#e8ecf4',verticalAlign:'top'}},_mdInline(cell))))))
+        )
+      ));
+      continue;
+    }
+    // Bullet
+    const bm=line.match(/^[\-\*]\s+(.+)/);
+    if(bm){elems.push(React.createElement('div',{key:'b'+j,style:{display:'flex',gap:8,margin:'3px 0',paddingLeft:4}},React.createElement('span',{style:{color:'#4a9eff',flexShrink:0,marginTop:3,fontSize:8}},'◆'),React.createElement('span',{style:{lineHeight:1.65}},_mdInline(bm[1]))));j++;continue;}
+    // Numbered list
+    const nm=line.match(/^(\d+)\.\s+(.+)/);
+    if(nm){elems.push(React.createElement('div',{key:'n'+j,style:{display:'flex',gap:8,margin:'3px 0',paddingLeft:4}},React.createElement('span',{style:{color:'#4a9eff',flexShrink:0,fontFamily:'monospace',fontSize:'0.88em',minWidth:18,marginTop:1}},nm[1]+'.'),React.createElement('span',{style:{lineHeight:1.65}},_mdInline(nm[2]))));j++;continue;}
+    // Blank line
+    if(line.trim()===''){elems.push(React.createElement('div',{key:'br'+j,style:{height:6}}));j++;continue;}
+    // Paragraph
+    elems.push(React.createElement('p',{key:'p'+j,style:{margin:'3px 0',lineHeight:1.7}},_mdInline(line)));
+    j++;
+  }
+  return elems.length?elems:text;
+}
+const _relTime=ts=>{if(!ts)return'';const d=Date.now()-ts;if(d<60000)return'agora';if(d<3600000)return Math.floor(d/60000)+' min atrás';return new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN APP
    ═══════════════════════════════════════════════════════════════ */
 function App(){
+  const[isMobile,setIsMobile]=useState(()=>window.innerWidth<640);
+  useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<640);window.addEventListener('resize',h,{passive:true});return()=>window.removeEventListener('resize',h)},[]);
   const[tab,setTab]=useState("overview");
   const[activePie,setActivePie]=useState(2);
   const[hovCr,setHovCr]=useState(null);
@@ -225,19 +298,73 @@ function App(){
   const[selectedCrawlerFilter,setSelectedCrawlerFilter]=useState(null);
   const[selectedQuickWin,setSelectedQuickWin]=useState(null);
 
-  // Load saved data from localStorage
-  useEffect(()=>{
+  // ── Chat (IA tab) ──
+  const INITIAL_MSG={role:'assistant',text:'Olá! Sou a **Letícia**, sua analista GEO-SEO sênior.\n\nPosso responder perguntas sobre **scores**, **citabilidade**, **findings**, **quick wins**, **crawlers** e muito mais — tudo baseado nos dados reais de auditoria.\n\nO que você gostaria de analisar?',ts:Date.now()};
+  const[chatMessages,setChatMessages]=useState([INITIAL_MSG]);
+  const[chatInput,setChatInput]=useState('');
+  const[chatLoading,setChatLoading]=useState(false);
+  const[chatSessionId,setChatSessionId]=useState('');
+  const[copiedIdx,setCopiedIdx]=useState(null);
+  const chatBottomRef=useRef(null);
+  const chatInputRef=useRef(null);
+
+  useEffect(()=>{if(chatBottomRef.current&&tab==='ia')chatBottomRef.current.scrollIntoView({behavior:'smooth'})},[chatMessages,chatLoading,tab]);
+
+  const handleChatSend=useCallback(async(msg)=>{
+    const text=(msg||chatInput).trim();
+    if(!text||chatLoading)return;
+    setChatInput('');
+    if(chatInputRef.current){chatInputRef.current.style.height='auto';}
+    setChatMessages(prev=>[...prev,{role:'user',text,ts:Date.now()}]);
+    setChatLoading(true);
     try{
-      const s=localStorage.getItem('geo-audit');
-      if(s){
-        const p=JSON.parse(s);
-        if(p?.source==='api'&&p?.data){
-          setData(p.data);
-          setLastUpdate(p.ts||null);
+      const resp=await fetch('/api/chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:text,session_id:chatSessionId}),
+      });
+      if(!resp.ok)throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+      const d=await resp.json();
+      if(d.session_id&&!chatSessionId)setChatSessionId(d.session_id);
+      setChatMessages(prev=>[...prev,{role:'assistant',text:d.response,ts:Date.now()}]);
+    }catch(e){
+      setChatMessages(prev=>[...prev,{role:'assistant',text:'⚠️ Erro ao conectar: '+e.message,ts:Date.now()}]);
+    }finally{setChatLoading(false);}
+  },[chatInput,chatLoading,chatSessionId]);
+
+  // Carrega última auditoria do BigQuery no startup
+  useEffect(()=>{
+    setAuditing(true);
+    setAuditMsg("Carregando dados...");
+    fetch('/api/latest')
+      .then(r=>{
+        if(r.status===404)return null;
+        if(!r.ok)throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(result=>{
+        if(result){
+          const mapped=mapAuditResult(result,DEFAULT_DATA);
+          setData(mapped);
+          setLastUpdate(result._bq_timestamp||new Date().toISOString());
           setHasRealData(true);
+          try{localStorage.setItem('geo-audit',JSON.stringify({source:'bq',data:mapped,ts:result._bq_timestamp}))}catch(e){}
+        } else {
+          // BQ sem dados ainda — tenta localStorage como fallback
+          try{
+            const s=localStorage.getItem('geo-audit');
+            if(s){const p=JSON.parse(s);if(p?.data){setData(p.data);setLastUpdate(p.ts||null);setHasRealData(true);}}
+          }catch(e){}
         }
-      }
-    }catch(e){}
+      })
+      .catch(()=>{
+        // BQ indisponível — fallback para localStorage
+        try{
+          const s=localStorage.getItem('geo-audit');
+          if(s){const p=JSON.parse(s);if(p?.data){setData(p.data);setLastUpdate(p.ts||null);setHasRealData(true);}}
+        }catch(e){}
+      })
+      .finally(()=>{setAuditing(false);setAuditMsg("");});
   },[]);
 
   const save=(newData)=>{
@@ -293,8 +420,7 @@ function App(){
     }finally{setAuditing(false)}
   },[data]);
 
-  // Auto-run audit on page load
-  useEffect(()=>{handleAudit();},[]);
+  // Audit é disparado apenas pelos botões — não no load
 
   // Keep hook order stable across renders; use fallback only for derived calculations.
   const sourceData=data||DEFAULT_DATA;
@@ -304,18 +430,26 @@ function App(){
   const platformData=useMemo(()=>Object.entries(sourceData.platforms).map(([name,d])=>({name:name.replace("Google ","G. "),fullName:name,...d,delta:d.prev?d.score-d.prev:null})),[sourceData.platforms]);
   const gradeData=useMemo(()=>{const c2={A:C.green,B:C.blue,C:C.amber,D:"#f97316",F:C.red};return Object.entries(sourceData.grades).map(([g,v])=>({name:g,value:v,fill:c2[g]}))},[sourceData.grades]);
   const impactData=useMemo(()=>{let cum=sourceData.geo_score;return sourceData.quick_wins.map(w=>{cum+=w.pts;return{...w,cumulative:cum}})},[sourceData]);
-  const radarData=useMemo(()=>categoryData.map(c=>({subject:c.label,current:c.value,previous:c.prev||0,max:100})),[categoryData]);
+  const radarData=useMemo(()=>categoryData.map(c=>({subject:c.label+' ('+c.weight+'%)',current:c.value,previous:c.prev||0,max:100})),[categoryData]);
 
   if(!hasRealData){
     return React.createElement('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px',background:C.bg}},
       React.createElement('div',{style:{...cs,maxWidth:560,width:'100%',textAlign:'center'}},
-        React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:8}},
-          React.createElement(Logo,{size:28}),
+        React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:12}},
+          React.createElement(Logo,{size:32}),
           React.createElement('span',{style:{fontSize:20,fontWeight:700}},'GEO-SEO Analytics')
         ),
-        React.createElement('div',{style:{fontSize:13,color:C.text2,lineHeight:1.6}},auditing?(auditMsg||'Carregando dados reais...'):'Aguardando dados reais da auditoria.'),
-        auditErr&&React.createElement('div',{style:{marginTop:12,padding:'8px 12px',borderRadius:8,fontSize:12,fontWeight:500,background:C.redBg,color:C.red,border:`1px solid ${C.red}30`}},auditErr),
-        React.createElement('button',{onClick:handleAudit,disabled:auditing,style:{marginTop:14,background:auditing?C.surface:`linear-gradient(135deg,${C.accent},${C.accent2})`,color:'#fff',border:'none',borderRadius:10,padding:'9px 18px',fontSize:13,fontWeight:600,cursor:auditing?'wait':'pointer',opacity:auditing?.7:1}},auditing?'Carregando...':'Tentar novamente')
+        auditing
+          ? React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:13,color:C.blue,lineHeight:1.7,marginBottom:8}},auditMsg||'Carregando dados...'),
+              React.createElement('div',{style:{fontSize:11,color:C.text3}},'Aguarde — analisando todas as páginas /pt-br...')
+            )
+          : React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:13,color:C.text2,lineHeight:1.7,marginBottom:4}},'Nenhum dado encontrado.'),
+              React.createElement('div',{style:{fontSize:11,color:C.text3,marginBottom:16}},'Execute a primeira auditoria de domínio para começar.'),
+              React.createElement('button',{onClick:handleDomainAudit,style:{background:`linear-gradient(135deg,#1f7cff,#25a0ff)`,color:'#fff',border:'none',borderRadius:10,padding:'10px 22px',fontSize:13,fontWeight:600,cursor:'pointer',boxShadow:'0 4px 16px rgba(37,160,255,.35)'}},'◎ Executar auditoria completa do domínio')
+            ),
+        auditErr&&React.createElement('div',{style:{marginTop:12,padding:'8px 12px',borderRadius:8,fontSize:12,fontWeight:500,background:C.redBg,color:C.red,border:`1px solid ${C.red}30`}},auditErr)
       )
     );
   }
@@ -325,53 +459,46 @@ function App(){
   return React.createElement('div',{style:{minHeight:'100vh'}},
 
     /* ── HEADER ── */
-    React.createElement('div',{style:{padding:'24px 28px 16px',background:`linear-gradient(180deg,${C.surface} 0%,${C.bg} 100%)`,borderBottom:`1px solid ${C.border}`}},
-      React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:14}},
-        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:12}},
-          React.createElement(Logo,{size:40}),
+    React.createElement('div',{style:{padding:isMobile?'12px 14px 10px':'24px 28px 16px',background:`linear-gradient(180deg,${C.surface} 0%,${C.bg} 100%)`,borderBottom:`1px solid ${C.border}`}},
+      React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:isMobile?8:14}},
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:isMobile?8:12}},
+          React.createElement(Logo,{size:isMobile?28:40}),
           React.createElement('div',null,
-            React.createElement('div',{style:{fontSize:19,fontWeight:700,letterSpacing:-.5}},'GEO-SEO Analytics'),
-            React.createElement('div',{style:{fontSize:12,color:C.text3}},
+            React.createElement('div',{style:{fontSize:isMobile?15:19,fontWeight:700,letterSpacing:-.5}},'GEO-SEO Analytics'),
+            React.createElement('div',{className:'hdr-url',style:{fontSize:12,color:C.text3}},
               React.createElement('span',{style:{color:C.accent}},data.brand),' | ',data.url,' | ',data.date,
-              lastUpdate&&React.createElement('span',{style:{color:C.green,fontSize:10,marginLeft:8}},'✓ '+new Date(lastUpdate).toLocaleDateString('pt-BR'))
+              lastUpdate&&React.createElement('span',{style:{color:C.green,fontSize:10,marginLeft:8}},'✓ atualizado · '+new Date(lastUpdate).toLocaleString('pt-BR'))
             )
           )
         ),
-        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',justifyContent:'flex-end'}},
-          React.createElement('button',{onClick:handleAudit,disabled:auditing,style:{
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'nowrap'}},
+          React.createElement('button',{onClick:handleDomainAudit,disabled:auditing,style:{
             background:auditing?C.surface:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-            color:'#fff',border:'none',borderRadius:10,padding:'9px 18px',fontSize:13,
+            color:'#fff',border:'none',borderRadius:10,padding:isMobile?'8px 12px':'9px 18px',fontSize:isMobile?12:13,
             fontWeight:600,cursor:auditing?'wait':'pointer',transition:'all .3s',
             boxShadow:auditing?'none':`0 4px 16px ${C.accent}40`,opacity:auditing?.7:1,
-            display:'flex',alignItems:'center',gap:8,
+            display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap',
           }},
             auditing?React.createElement(React.Fragment,null,
-              React.createElement('svg',{width:16,height:16,viewBox:'0 0 16 16',style:{animation:'spin 1s linear infinite'}},
+              React.createElement('svg',{width:14,height:14,viewBox:'0 0 16 16',style:{animation:'spin 1s linear infinite'}},
                 React.createElement('circle',{cx:8,cy:8,r:6,stroke:'#fff',strokeWidth:2,fill:'none',strokeDasharray:28,strokeDashoffset:8,strokeLinecap:'round'})
-              ),auditMsg||'Analisando...'
-            ):'↻ Atualizar dados'
+              ),isMobile?'...':auditMsg||'Analisando...'
+            ):isMobile?'↻':'↻ Atualizar dados'
           ),
-          React.createElement('button',{onClick:handleDomainAudit,disabled:auditing,style:{
-            background:auditing?C.surface:`linear-gradient(135deg,#1f7cff,#25a0ff)`,
-            color:'#fff',border:'none',borderRadius:10,padding:'9px 18px',fontSize:13,
-            fontWeight:600,cursor:auditing?'wait':'pointer',transition:'all .3s',
-            boxShadow:auditing?'none':'0 4px 16px rgba(37,160,255,.35)',opacity:auditing?.7:1,
-            display:'flex',alignItems:'center',gap:8,
-          }},auditing?'Aguarde...':'◎ Analisar domínio completa'),
-          React.createElement('div',{style:{background:tier(data.geo_score).bg,border:`1px solid ${tier(data.geo_score).c}30`,padding:'6px 14px',borderRadius:10,display:'flex',alignItems:'center',gap:8}},
-            React.createElement('span',{style:{fontSize:18,fontWeight:800,color:tier(data.geo_score).c,fontFamily:'monospace'}},data.geo_score),
+          React.createElement('div',{style:{background:tier(data.geo_score).bg,border:`1px solid ${tier(data.geo_score).c}30`,padding:isMobile?'5px 10px':'6px 14px',borderRadius:10,display:'flex',alignItems:'center',gap:6}},
+            React.createElement('span',{style:{fontSize:isMobile?16:18,fontWeight:800,color:tier(data.geo_score).c,fontFamily:'monospace'}},data.geo_score),
             React.createElement('span',{style:{fontSize:11,color:C.text2}},'/ 100'),
             D.delta&&React.createElement(Delta,{value:D.delta,suffix:' pts'})
           )
         )
       ),
-      (auditMsg||auditErr)&&React.createElement('div',{style:{marginTop:10,padding:'8px 14px',borderRadius:8,fontSize:12,fontWeight:500,background:auditErr?C.redBg:C.blueBg,color:auditErr?C.red:C.blue,border:`1px solid ${auditErr?C.red+'30':C.blue+'30'}`}},auditErr||auditMsg),
-      React.createElement('div',{style:{display:'flex',gap:4,marginTop:14,overflowX:'auto',paddingBottom:2}},
-        TABS.map(t=>React.createElement('button',{key:t.id,onClick:()=>{setTab(t.id);setSelectedCat(null);setSelectedGrade(null);setSelectedBlock(null);setDrillShowAll(false);setBlocksShowAll(false);setSelectedPlatform(null);setSelectedSev(null);setSelectedCrawlerFilter(null);setSelectedQuickWin(null)},style:{background:tab===t.id?C.accent+'15':'transparent',border:tab===t.id?`1px solid ${C.accent}30`:'1px solid transparent',color:tab===t.id?C.accent:C.text3,padding:'7px 14px',borderRadius:10,fontSize:12,fontWeight:500,cursor:'pointer',transition:'all .25s',whiteSpace:'nowrap'}},t.icon,' ',t.label))
+      (auditMsg||auditErr)&&React.createElement('div',{style:{marginTop:8,padding:'7px 12px',borderRadius:8,fontSize:12,fontWeight:500,background:auditErr?C.redBg:C.blueBg,color:auditErr?C.red:C.blue,border:`1px solid ${auditErr?C.red+'30':C.blue+'30'}`}},auditErr||auditMsg),
+      React.createElement('div',{className:'tab-bar',style:{display:'flex',gap:4,marginTop:isMobile?10:14,overflowX:'auto',paddingBottom:2,scrollbarWidth:'none'}},
+        TABS.map(t=>React.createElement('button',{key:t.id,onClick:()=>{setTab(t.id);setSelectedCat(null);setSelectedGrade(null);setSelectedBlock(null);setDrillShowAll(false);setBlocksShowAll(false);setSelectedPlatform(null);setSelectedSev(null);setSelectedCrawlerFilter(null);setSelectedQuickWin(null)},style:{background:tab===t.id?C.accent+'15':'transparent',border:tab===t.id?`1px solid ${C.accent}30`:'1px solid transparent',color:tab===t.id?C.accent:C.text3,padding:'7px 14px',borderRadius:10,fontSize:12,fontWeight:500,cursor:'pointer',transition:'all .25s',whiteSpace:'nowrap',minHeight:36,flexShrink:0}},t.icon,' ',t.label))
       )
     ),
 
-    React.createElement('div',{style:{padding:'20px 28px'}},
+    React.createElement('div',{style:{padding:isMobile?'12px 14px':'20px 28px'}},
 
       /* ── OVERVIEW ── */
       tab==="overview"&&React.createElement('div',{className:'fade-up'},
@@ -481,8 +608,8 @@ function App(){
               React.createElement(Tooltip,{content:React.createElement(CTip)}),
               platformData[0]?.prev!=null&&React.createElement(Bar,{dataKey:"prev",name:"Anterior",fill:C.text3,opacity:.25,radius:[4,4,0,0],maxBarSize:32}),
               React.createElement(Bar,{dataKey:"score",name:"Score",radius:[6,6,0,0],maxBarSize:36,onClick:(entry)=>setSelectedPlatform(selectedPlatform===entry.fullName?null:entry.fullName),style:{cursor:'pointer'}},platformData.map((e,i)=>React.createElement(Cell,{key:i,fill:e.color,opacity:selectedPlatform?selectedPlatform===e.fullName?1:.3:1,stroke:selectedPlatform===e.fullName?'#fff':'none',strokeWidth:selectedPlatform===e.fullName?2:0}))),
-              React.createElement(ReferenceLine,{y:data.industry_avg,stroke:C.amber,strokeDasharray:"5 3",strokeWidth:1.5,label:{value:`Média ind. ${data.industry_avg}`,fill:C.amber,fontSize:10,position:'insideTopLeft'}}),
-              React.createElement(ReferenceLine,{y:data.top_competitor.score,stroke:C.red,strokeDasharray:"4 4",strokeWidth:1,label:{value:data.top_competitor.name,fill:C.red,fontSize:10,position:'insideTopRight'}}),
+              React.createElement(ReferenceLine,{y:data.industry_avg,stroke:C.amber,strokeDasharray:"5 3",strokeWidth:1.5,label:{value:`▶ Média setor: ${data.industry_avg}`,fill:C.amber,fontSize:10,position:'insideBottomLeft'}}),
+              React.createElement(ReferenceLine,{y:data.top_competitor.score,stroke:C.red,strokeDasharray:"4 4",strokeWidth:1,label:{value:`▶ ${data.top_competitor.name}: ${data.top_competitor.score}`,fill:C.red,fontSize:10,position:'insideTopLeft'}}),
               React.createElement(Legend,{wrapperStyle:{fontSize:11,color:C.text2}})
             )
           )
@@ -603,9 +730,9 @@ function App(){
       tab==="citability"&&React.createElement('div',{className:'fade-up'},
         React.createElement(PagesPanel,{data:sourceData,filterUrls:[...new Set(data.citability_blocks.map(b=>b.source_url).filter(Boolean))]}),
         React.createElement('div',{style:{display:'flex',gap:14,flexWrap:'wrap',marginBottom:20}},
-          React.createElement('div',{style:{...cs,flex:'1 1 260px',minWidth:260}},sl("Distribuição de grades — clique para ver detalhes"),
+          React.createElement('div',{style:{...cs,flex:'1 1 260px',minWidth:260}},sl("Distribuição de grades de citabilidade — A=≥80 B=≥65 C=≥50 D=≥35 F=<35"),
             React.createElement(ResponsiveContainer,{width:"100%",height:220},React.createElement(PieChart,null,React.createElement(Pie,{data:gradeData,cx:"50%",cy:"50%",innerRadius:55,outerRadius:85,dataKey:"value",activeIndex:activePie,activeShape:ActiveShape,onMouseEnter:(_,i)=>setActivePie(i),onClick:(entry)=>{setSelectedGrade(selectedGrade===entry.name?null:entry.name);setDrillShowAll(false)},paddingAngle:3,strokeWidth:0,style:{cursor:'pointer'}},gradeData.map((e,i)=>React.createElement(Cell,{key:i,fill:e.fill,opacity:selectedGrade&&selectedGrade!==e.name?.3:1,stroke:selectedGrade===e.name?'#fff':'none',strokeWidth:selectedGrade===e.name?2:0}))))),
-            React.createElement('div',{style:{display:'flex',justifyContent:'center',gap:8,marginTop:4,flexWrap:'wrap'}},gradeData.map(g=>React.createElement('span',{key:g.name,onClick:()=>{setSelectedGrade(selectedGrade===g.name?null:g.name);setDrillShowAll(false)},style:{fontSize:11,color:selectedGrade===g.name?g.fill:C.text3,cursor:'pointer',padding:'3px 8px',borderRadius:6,background:selectedGrade===g.name?g.fill+'18':'transparent',border:selectedGrade===g.name?`1px solid ${g.fill}40`:'1px solid transparent',transition:'all .2s',fontWeight:selectedGrade===g.name?600:400}},React.createElement('span',{style:{color:g.fill,fontWeight:700,fontFamily:'monospace'}},g.value),' ',g.name)))
+            React.createElement('div',{style:{display:'flex',justifyContent:'center',gap:8,marginTop:4,flexWrap:'wrap'}},gradeData.map(g=>React.createElement('span',{key:g.name,onClick:()=>{setSelectedGrade(selectedGrade===g.name?null:g.name);setDrillShowAll(false)},style:{fontSize:11,color:selectedGrade===g.name?g.fill:C.text3,cursor:'pointer',padding:'3px 8px',borderRadius:6,background:selectedGrade===g.name?g.fill+'18':'transparent',border:selectedGrade===g.name?`1px solid ${g.fill}40`:'1px solid transparent',transition:'all .2s',fontWeight:selectedGrade===g.name?600:400}},React.createElement('span',{style:{color:g.fill,fontWeight:700,fontFamily:'monospace'}},g.value),' ',g.name,' ',React.createElement('span',{style:{color:C.text3,fontSize:10,fontFamily:'monospace'}},'(',D.totBlocks>0?Math.round(g.value/D.totBlocks*100):0,'%)'))))
           ),
           React.createElement('div',{style:{...cs,flex:'1 1 360px',minWidth:360}},sl("Distribuição de blocos por faixa de palavras"),
             (()=>{
@@ -683,9 +810,9 @@ function App(){
                 React.createElement('div',{style:{fontSize:13,fontWeight:600,marginBottom:2}},b.heading),
                 React.createElement('div',{style:{display:'flex',gap:12,fontSize:10,color:C.text3,flexWrap:'wrap'}},
                   React.createElement('span',null,b.words,' palavras',b.words>=134&&b.words<=167?' ✓':''),
-                  React.createElement('span',null,'AQ: ',React.createElement('span',{style:{color:tier(b.answer_quality).c,fontFamily:'monospace',fontWeight:600}},b.answer_quality)),
-                  React.createElement('span',null,'SC: ',React.createElement('span',{style:{color:tier(b.self_contain).c,fontFamily:'monospace',fontWeight:600}},b.self_contain)),
-                  React.createElement('span',null,'SD: ',React.createElement('span',{style:{color:tier(b.stat_density).c,fontFamily:'monospace',fontWeight:600}},b.stat_density))
+                  React.createElement('span',null,'Answer quality: ',React.createElement('span',{style:{color:tier(b.answer_quality).c,fontFamily:'monospace',fontWeight:600}},b.answer_quality)),
+                  React.createElement('span',null,'Self-contain.: ',React.createElement('span',{style:{color:tier(b.self_contain).c,fontFamily:'monospace',fontWeight:600}},b.self_contain)),
+                  React.createElement('span',null,'Stat density: ',React.createElement('span',{style:{color:tier(b.stat_density).c,fontFamily:'monospace',fontWeight:600}},b.stat_density))
                 ),
                 shortSrc&&React.createElement('a',{href:b.source_url,target:'_blank',rel:'noopener',style:{fontSize:9,color:C.blue,fontFamily:'monospace',textDecoration:'none',opacity:.7}},shortSrc)
               ),
@@ -814,15 +941,15 @@ function App(){
               );
             };
             return React.createElement(ResponsiveContainer,{width:"100%",height:260},
-              React.createElement(AreaChart,{data:impactData,margin:{top:10,right:20,bottom:10,left:-10},onClick:(e)=>{if(e&&e.activePayload&&e.activePayload[0]){const d=e.activePayload[0].payload;setSelectedQuickWin(selectedQuickWin&&selectedQuickWin.action===d.action?null:d)}}},
+              React.createElement(AreaChart,{data:impactData,margin:{top:10,right:20,bottom:55,left:-10},onClick:(e)=>{if(e&&e.activePayload&&e.activePayload[0]){const d=e.activePayload[0].payload;setSelectedQuickWin(selectedQuickWin&&selectedQuickWin.action===d.action?null:d)}}},
                 React.createElement('defs',null,React.createElement('linearGradient',{id:"ig",x1:0,y1:0,x2:0,y2:1},React.createElement('stop',{offset:"0%",stopColor:C.green,stopOpacity:.3}),React.createElement('stop',{offset:"100%",stopColor:C.green,stopOpacity:.02}))),
                 React.createElement(CartesianGrid,{stroke:C.border,strokeDasharray:"3 3",vertical:false}),
-                React.createElement(XAxis,{dataKey:"action",tick:false,axisLine:false}),
+                React.createElement(XAxis,{dataKey:"action",axisLine:false,tickLine:false,height:55,tick:({x,y,payload})=>{const words=(payload.value||'').split(' ');const short=(words.slice(0,3).join(' ')+(words.length>3?'…':'')).slice(0,28);return React.createElement('text',{x,y:y+4,fill:C.text3,fontSize:8,textAnchor:'end',transform:`rotate(-38,${x},${y+4})`},short)}}),
                 React.createElement(YAxis,{domain:[data.geo_score-5,D.proj+5],tick:{fill:C.text3,fontSize:10},axisLine:false,tickLine:false}),
                 React.createElement(Tooltip,{content:React.createElement(RoadmapTip)}),
                 React.createElement(Area,{type:"monotone",dataKey:"cumulative",stroke:C.green,fill:"url(#ig)",strokeWidth:2.5,name:"Projetado",dot:{r:5,fill:C.green,strokeWidth:2,stroke:C.card,cursor:'pointer'},activeDot:{r:8,fill:C.green,stroke:'#fff',strokeWidth:2}}),
-                React.createElement(ReferenceLine,{y:data.geo_score,stroke:C.text3,strokeDasharray:"6 4",strokeWidth:1.5,label:{value:`Atual ${data.geo_score}`,fill:C.text3,fontSize:10,position:'insideTopLeft'}}),
-                React.createElement(ReferenceLine,{y:data.top_competitor.score,stroke:C.red,strokeDasharray:"4 4",strokeWidth:1.5,label:{value:data.top_competitor.name,fill:C.red,fontSize:10,position:'insideTopRight'}}),
+                React.createElement(ReferenceLine,{y:data.geo_score,stroke:C.text3,strokeDasharray:"6 4",strokeWidth:1.5,label:{value:`Score atual: ${data.geo_score}`,fill:C.text3,fontSize:10,position:'insideBottomLeft'}}),
+                React.createElement(ReferenceLine,{y:data.top_competitor.score,stroke:C.red,strokeDasharray:"4 4",strokeWidth:1.5,label:{value:`Meta: ${data.top_competitor.name} ${data.top_competitor.score}`,fill:C.red,fontSize:10,position:'insideTopLeft'}}),
                 React.createElement(Legend,{wrapperStyle:{fontSize:11,color:C.text2}})
               )
             );
@@ -885,10 +1012,168 @@ function App(){
         )
       ),
 
+      /* ── IA TAB ── */
+      tab==="ia"&&React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',height:`calc(100dvh - ${isMobile?160:220}px)`,minHeight:400}},
+
+        /* ── Header ── */
+        React.createElement('div',{style:{
+          display:'flex',alignItems:'center',gap:10,padding:isMobile?'10px 14px':'14px 20px',flexShrink:0,
+          background:`linear-gradient(135deg,${C.accent}12,${C.card})`,
+          border:`1px solid ${C.accent}25`,borderRadius:14,marginBottom:10,
+        }},
+          React.createElement('div',{style:{
+            width:isMobile?36:44,height:isMobile?36:44,borderRadius:12,flexShrink:0,
+            background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+            display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:isMobile?17:22,boxShadow:`0 4px 18px ${C.accent}45`,
+          }},'✦'),
+          React.createElement('div',{style:{flex:1,minWidth:0}},
+            React.createElement('div',{style:{fontSize:isMobile?13:15,fontWeight:700,letterSpacing:-.3}},'Letícia'),
+            React.createElement('div',{style:{fontSize:11,marginTop:2,display:'flex',alignItems:'center',gap:5}},
+              React.createElement('span',{style:{
+                width:6,height:6,borderRadius:'50%',flexShrink:0,display:'inline-block',
+                background:chatLoading?C.amber:C.green,
+                boxShadow:`0 0 6px ${chatLoading?C.amber:C.green}`,
+              }}),
+              React.createElement('span',{style:{color:chatLoading?C.amber:C.green,fontWeight:500}},chatLoading?'digitando...':'online'),
+              !isMobile&&React.createElement('span',{style:{color:C.text3,marginLeft:4}},'· Analista GEO-SEO sênior · Hotmart')
+            )
+          ),
+          React.createElement('button',{
+            onClick:()=>{setChatMessages([{...INITIAL_MSG,ts:Date.now()}]);setChatSessionId('');setCopiedIdx(null);},
+            title:'Nova conversa',
+            style:{background:'none',border:`1px solid ${C.border}`,color:C.text3,borderRadius:8,padding:isMobile?'7px 10px':'6px 12px',fontSize:11,cursor:'pointer',transition:'all .2s',flexShrink:0,minHeight:36,display:'flex',alignItems:'center',gap:4},
+          },isMobile?'↺':'↺ Nova conversa')
+        ),
+
+        /* ── Messages ── */
+        React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'4px 0',display:'flex',flexDirection:'column',gap:0,WebkitOverflowScrolling:'touch',scrollbarWidth:'thin'}},
+          chatMessages.map((msg,i)=>{
+            const isUser=msg.role==='user';
+            return React.createElement('div',{key:i,style:{
+              display:'flex',gap:8,alignItems:'flex-start',padding:'5px 0',
+              justifyContent:isUser?'flex-end':'flex-start',
+              animation:'fadeUp .25s ease both',
+            }},
+              !isUser&&React.createElement('div',{style:{
+                width:isMobile?28:32,height:isMobile?28:32,borderRadius:9,flexShrink:0,marginTop:2,
+                background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:isMobile?12:14,boxShadow:`0 2px 10px ${C.accent}40`,
+              }},'✦'),
+              React.createElement('div',{style:{maxWidth:isMobile?'88%':'75%',display:'flex',flexDirection:'column',alignItems:isUser?'flex-end':'flex-start',gap:3}},
+                React.createElement('div',{style:{
+                  padding:isMobile?'9px 12px':'11px 15px',
+                  borderRadius:isUser?'16px 4px 16px 16px':'4px 16px 16px 16px',
+                  background:isUser?`linear-gradient(135deg,${C.accent},${C.accent2})`:C.card,
+                  border:isUser?'none':`1px solid ${C.border}`,
+                  fontSize:isMobile?14:13,lineHeight:1.7,color:isUser?'#fff':C.text1,
+                  boxShadow:isUser?`0 2px 16px ${C.accent}30`:`0 1px 4px rgba(0,0,0,.3)`,
+                  wordBreak:'break-word',
+                }},
+                  isUser?msg.text:parseMd(msg.text)
+                ),
+                React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'0 4px'}},
+                  React.createElement('span',{style:{fontSize:10,color:C.text3}},_relTime(msg.ts)),
+                  !isUser&&React.createElement('button',{
+                    onClick:()=>{navigator.clipboard?.writeText(msg.text).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});},
+                    title:'Copiar',
+                    style:{background:'none',border:'none',color:copiedIdx===i?C.green:C.text3,fontSize:10,cursor:'pointer',padding:'3px 6px',borderRadius:4,transition:'all .2s',minHeight:28},
+                  },copiedIdx===i?'✓':'⎘')
+                )
+              ),
+              isUser&&React.createElement('div',{style:{
+                width:isMobile?28:32,height:isMobile?28:32,borderRadius:9,flexShrink:0,marginTop:2,
+                background:C.surface,border:`1px solid ${C.border}`,
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:isMobile?12:14,color:C.text2,
+              }},'◈')
+            );
+          }),
+          chatLoading&&React.createElement('div',{style:{display:'flex',gap:10,alignItems:'flex-start',padding:'6px 0'}},
+            React.createElement('div',{style:{
+              width:32,height:32,borderRadius:10,flexShrink:0,
+              background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,
+              boxShadow:`0 2px 10px ${C.accent}40`,
+            }},'✦'),
+            React.createElement('div',{style:{
+              padding:'14px 18px',borderRadius:'4px 16px 16px 16px',
+              background:C.card,border:`1px solid ${C.border}`,
+              display:'flex',gap:5,alignItems:'center',boxShadow:`0 1px 4px rgba(0,0,0,.3)`,
+            }},
+              [0,1,2].map(j=>React.createElement('span',{key:j,style:{
+                width:8,height:8,borderRadius:'50%',display:'inline-block',
+                background:C.accent,animation:`pulse 1.4s ease-in-out ${j*0.2}s infinite`,
+              }}))
+            )
+          ),
+          React.createElement('div',{ref:chatBottomRef})
+        ),
+
+        /* ── Quick suggestions ── */
+        React.createElement('div',{
+          className:'chat-chips',
+          style:{
+            padding:'8px 0 4px',display:'flex',gap:6,flexShrink:0,
+            flexWrap:isMobile?'nowrap':'wrap',
+            overflowX:isMobile?'auto':'visible',
+            scrollbarWidth:'none',
+          }
+        },
+          ['GEO Score atual','Findings críticos','Quick wins ROI','Citabilidade','Platforms','Potencial'].map((chip,i)=>
+            React.createElement('button',{key:i,onClick:()=>handleChatSend(chip),disabled:chatLoading,style:{
+              background:'transparent',border:`1px solid ${C.accent}35`,color:C.accent,
+              borderRadius:20,padding:'5px 12px',fontSize:11,fontWeight:500,cursor:'pointer',
+              transition:'all .2s',opacity:chatLoading?.5:1,
+              flexShrink:0,minHeight:32,whiteSpace:'nowrap',
+            }},chip)
+          )
+        ),
+
+        /* ── Input ── */
+        React.createElement('div',{
+          className:'chat-input',
+          style:{flexShrink:0,borderTop:`1px solid ${C.border}`,paddingTop:10,display:'flex',gap:8,alignItems:'flex-end'},
+        },
+          React.createElement('textarea',{
+            ref:chatInputRef,
+            value:chatInput,
+            onChange:e=>setChatInput(e.target.value),
+            onInput:e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,isMobile?96:120)+'px';},
+            onKeyDown:e=>{if(e.key==='Enter'&&!e.shiftKey&&!isMobile){e.preventDefault();handleChatSend();}},
+            placeholder:isMobile?'Pergunte sobre GEO Score...':'Pergunte sobre scores, findings, quick wins... (Enter envia)',
+            disabled:chatLoading,
+            rows:1,
+            style:{
+              flex:1,background:C.surface,border:`1px solid ${C.border}`,
+              borderRadius:12,padding:isMobile?'11px 12px':'10px 14px',
+              fontSize:isMobile?16:13, // 16px prevents iOS auto-zoom
+              color:C.text1,resize:'none',outline:'none',fontFamily:'inherit',
+              lineHeight:1.55,transition:'border-color .2s',
+              minHeight:44,maxHeight:isMobile?96:120,overflowY:'auto',
+              WebkitAppearance:'none',
+            },
+          }),
+          React.createElement('button',{
+            onClick:()=>handleChatSend(),
+            disabled:chatLoading||!chatInput.trim(),
+            style:{
+              background:chatLoading||!chatInput.trim()?C.surface:`linear-gradient(135deg,${C.accent},${C.accent2})`,
+              color:chatLoading||!chatInput.trim()?C.text3:'#fff',
+              border:`1px solid ${chatLoading||!chatInput.trim()?C.border:C.accent}`,
+              borderRadius:12,width:44,height:44,flexShrink:0,
+              cursor:chatLoading||!chatInput.trim()?'default':'pointer',
+              fontSize:20,display:'flex',alignItems:'center',justifyContent:'center',
+              transition:'all .25s',boxShadow:chatLoading||!chatInput.trim()?'none':`0 2px 12px ${C.accent}40`,
+            },
+          },'→')
+        )
+      ),
+
       /* ── FOOTER ── */
       React.createElement('div',{style:{marginTop:36,paddingTop:14,borderTop:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:10,color:C.text3}},
         React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6}},React.createElement(Logo,{size:16}),'GEO-SEO Auditor - By Letícia Nonato'),
-        React.createElement('span',null,lastUpdate?'Dados de '+new Date(lastUpdate).toLocaleDateString('pt-BR'):'Baseline')
+        React.createElement('span',null,lastUpdate?'Atualizado em '+new Date(lastUpdate).toLocaleDateString('pt-BR'):'Baseline')
       )
     )
   );
