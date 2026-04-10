@@ -19,7 +19,9 @@
       "Bash(python3:*)",
       "Bash(python -c \":*)",
       "Bash(gcloud builds:*)",
-      "Bash(gcloud logging:*)"
+      "Bash(gcloud logging:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''static/index.html''\\).read\\(\\)\\)\")",
+      "Bash(wc -l auditor/*.py main.py server.py)"
     ]
   }
 }
