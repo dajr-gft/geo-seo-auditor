@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python setup_bigquery.py)",
+      "Bash(gcloud auth:*)",
+      "Bash(GOOGLE_CLOUD_PROJECT=ia-sandbox-bangalo python \"C:/Users/dajr/Downloads/geo-seo-auditor/geo-seo-auditor/setup_bigquery.py\")",
+      "Bash(GOOGLE_CLOUD_PROJECT=ia-sandbox-bangalo python setup_bigquery.py)",
+      "Bash(gcloud run:*)",
+      "Bash(SA=\"29562083920-compute@developer.gserviceaccount.com\")",
+      "Bash(gcloud projects:*)",
+      "Bash(curl -s \"https://pypi.org/pypi/google-adk/json\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(''''Package:'''', d[''''info''''][''''name'''']\\); print\\(''''Version:'''', d[''''info''''][''''version'''']\\); print\\(''''Summary:'''', d[''''info''''][''''summary'''']\\); print\\(''''Home page:'''', d[''''info''''][''''home_page'''']\\); print\\(''''Project URLs:'''', json.dumps\\(d[''''info''''][''''project_urls''''], indent=2\\)\\)\")",
+      "WebSearch",
+      "WebFetch(domain:google.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(python3:*)",
+      "Bash(python -c \":*)",
+      "Bash(gcloud builds:*)",
+      "Bash(gcloud logging:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''static/index.html''\\).read\\(\\)\\)\")",
+      "Bash(wc -l auditor/*.py main.py server.py)"
+    ]
+  }
+}
